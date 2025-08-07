@@ -1,7 +1,7 @@
 from typing import Union
 
 from fastapi import FastAPI
-from app.collect.clipper.router import router as clipper_router
+from app.collect.v1.clipper.router import router as clipper_router
 
 app = FastAPI(
     title="LinkyBoard AI API",
