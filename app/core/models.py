@@ -1,6 +1,6 @@
 from sqlalchemy import JSON, Column, String, Text, DateTime, Integer, Boolean, ForeignKey, Index, Float
 from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from pgvector.sqlalchemy import Vector
 
 from app.core.database import Base
@@ -75,7 +75,7 @@ class Item(Base):
     content_metadata = Column(Text, nullable=True, comment="콘텐츠 메타데이터 (JSON 형태)")
     
     # 벡터 임베딩 (pgvector) - 의미 검색용
-    content_embedding = Column(Vector(1536), nullable=True, comment="콘텐츠 벡터 임베딩")
+    embedding_chunks = relationship("ItemEmbeddingMetadata", back_populates="item", cascade="all, delete-orphan")
     
     # 태그 정보 (JSON으로 저장) ✨ 핵심 변경
     # user_tags = Column(JSON, nullable=True, comment="사용자 생성 태그 배열 ['tag1', 'tag2']")
@@ -122,7 +122,7 @@ class Item(Base):
     @property 
     def is_embedded(self) -> bool:
         """임베딩이 완료되었는지 확인"""
-        return self.content_embedding is not None
+        return len(self.embedding_chunks) > 0
 
     # @property
     # def ai_tags(self):
@@ -133,6 +133,76 @@ class Item(Base):
     # def user_tags(self):
     #     """사용자 생성 태그만 반환"""
     #     return [tag for tag in self.tags if tag.tag_type == "user"]
+
+
+class ItemEmbeddingMetadata(Base):
+    """item 임베딩 메타데이터 테이블"""
+    __tablename__ = "item_embedding_metadatas"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="임베딩 메타데이터 ID")
+    item_id = Column(
+        Integer, 
+        ForeignKey("items.id", ondelete="CASCADE"),
+        comment="아이템 ID (외래키)"
+    )
+    embedding_model = Column(String(50), nullable=False, comment="임베딩 모델명")
+    embedding_version = Column(String(50), nullable=False, comment="임베딩 모델 버전")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
+    
+    # 청크 관련 정보
+    chunk_number = Column(Integer, nullable=False, comment="청크 번호 (0부터 시작)")
+    chunk_content = Column(Text, nullable=False, comment="청크 텍스트 내용")
+    chunk_size = Column(Integer, nullable=True, comment="청크 크기(문자 수)")
+    token_count = Column(Integer, nullable=True, comment="토큰 수")
+    start_position = Column(Integer, nullable=True, comment="원본에서 시작 위치")
+    end_position = Column(Integer, nullable=True, comment="원본에서 끝 위치")
+
+    total_chunks = Column(Integer, nullable=False, comment="총 청크 수")
+
+    # 임베딩 벡터 (pgvector)
+    embedding_vector = Column(Vector(1536), nullable=False, comment="아이템 임베딩 벡터")
+
+    # 관계 설정
+    item = relationship("Item", back_populates="embedding_chunks")
+
+    __table_args__ = (
+        Index('ix_item_embedding_metadatas_item_id', 'item_id'),
+        Index('ix_item_embedding_metadatas_item_chunk', 'item_id', 'chunk_number', unique=True),
+        Index('ix_item_embedding_metadatas_model_version', 'embedding_model', 'embedding_version'),
+        # pgvector 유사도 검색용 인덱스 (별도 DDL 필요)
+    )
+
+    @property
+    def similarity_threshold(self) -> float:
+        """이 청크의 권장 유사도 임계값"""
+        return 0.8 if self.chunk_number == 0 else 0.7  # 첫 번째 청크는 더 높은 임계값
+    
+    @property
+    def is_first_chunk(self) -> bool:
+        """첫 번째 청크인지 확인 (보통 제목/요약 포함)"""
+        return self.chunk_number == 0
+
+    @property
+    def chunk_weight(self) -> float:
+        """검색 시 가중치 (첫 번째 청크 더 높은 가중치)"""
+        return 1.2 if self.is_first_chunk else 1.0
+    
+    def get_context_preview(self, max_chars: int = 200) -> str:
+        """검색 결과 미리보기용 텍스트"""
+        return self.chunk_content[:max_chars] + "..." if len(self.chunk_content) > max_chars else self.chunk_content
+
+    @validates('chunk_number')
+    def validate_chunk_number(self, key, chunk_number):
+        if chunk_number < 0:
+            raise ValueError("chunk_number must be >= 0")
+        return chunk_number
+
+    @validates('total_chunks')
+    def validate_total_chunks(self, key, total_chunks):
+        if total_chunks < 1:
+            raise ValueError("total_chunks must be >= 1")
+        return total_chunks
+    
 
 # TODO: AI 태그와 사용자 태그를 별도의 테이블로 분리하는 방안 검토
 # 현재는 Item 모델에 JSON 형태로 저장되어 있지만, 별도의 ItemTag 모델로 분리하여 관리하는 것이 더 효율적일 수 있음
