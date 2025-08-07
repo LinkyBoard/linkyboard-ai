@@ -4,7 +4,9 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+uvicorn = "*"
 fastapi = "*"
+python-dotenv = "*"
 
 [dev-packages]
 
