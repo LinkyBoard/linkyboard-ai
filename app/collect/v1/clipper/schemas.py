@@ -3,12 +3,17 @@ from pydantic import BaseModel
 
 
 # Request 스키마
-class SaveOnlyRequest(BaseModel):
-    """저장만 하기 요청 스키마"""
-    user_id: str
+class WebpageSaveRequest(BaseModel):
+    """웹페이지 저장 요청 스키마"""
+    user_id: int
     thumbnail: str
     title: str
     url: str
+    summary: Optional[str] = None
+    keywords: Optional[list[str]] = None
+    category: str
+    memo: Optional[str] = None
+    html_content: Optional[str] = None
     html_content: str
 
 
@@ -18,20 +23,8 @@ class SummarizeRequest(BaseModel):
     html_content: str
 
 
-class SaveWithSummaryRequest(BaseModel):
-    """요약과 함께 저장하기 요청 스키마"""
-    user_id: str
-    thumbnail: str
-    title: str
-    url: str
-    memo: Optional[str] = None
-    summary: str
-    keywords: list[str]
-    category: str
-
-
 # Response 스키마
-class SaveOnlyResponse(BaseModel):
+class WebpageSaveResponse(BaseModel):
     """저장만 하기 응답 스키마"""
     success: bool
     message: str
@@ -42,9 +35,3 @@ class SummarizeResponse(BaseModel):
     summary: str
     keywords: list[str]
     category: str
-
-
-class SaveWithSummaryResponse(BaseModel):
-    """요약과 함께 저장하기 응답 스키마"""
-    success: bool
-    message: str
