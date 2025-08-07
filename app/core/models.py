@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, DateTime, Integer, Boolean, ForeignKey, Index, Float
+from sqlalchemy import JSON, Column, String, Text, DateTime, Integer, Boolean, ForeignKey, Index, Float
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
@@ -7,7 +7,7 @@ from app.core.database import Base
 
 
 class User(Base):
-    """사용자 기본 정보 테이블 - 서비스 서버와 동기화용"""
+    """사용자 기본 정보 테이블"""
     __tablename__ = "users"
     
     # 서비스 서버의 사용자 ID와 동일한 Long 사용
@@ -41,8 +41,8 @@ class Item(Base):
     """아이템 테이블 - 다양한 타입의 콘텐츠를 저장 (웹페이지, PDF, 유튜브, 이미지 등)"""
     __tablename__ = "items"
 
-    # 기본 식별자
-    id = Column(Integer, primary_key=True, autoincrement=True, comment="아이템 ID")
+    # Spring Boot와의 동기화를 위해 기존 ID 사용
+    id = Column(Integer, primary_key=True, autoincrement=False, comment="Spring Boot Item ID (동기화)")
     
     # 사용자 관계 추가
     user_id = Column(
@@ -68,6 +68,7 @@ class Item(Base):
     description = Column(Text, nullable=True, comment="설명 또는 요약")
     summary = Column(Text, nullable=True, comment="요약")
     category = Column(String(100), nullable=True, comment="카테고리")
+    memo = Column(Text, nullable=True, comment="사용자 메모")
     
     # 원본 콘텐츠 저장 (타입별로 다름)
     raw_content = Column(Text, nullable=True, comment="원본 콘텐츠 (HTML, 텍스트, 메타데이터 등)")
@@ -76,9 +77,11 @@ class Item(Base):
     # 벡터 임베딩 (pgvector) - 의미 검색용
     content_embedding = Column(Vector(1536), nullable=True, comment="콘텐츠 벡터 임베딩")
     
-    # 사용자 생성 콘텐츠
-    user_memo = Column(Text, nullable=True, comment="사용자 메모")
-    
+    # 태그 정보 (JSON으로 저장) ✨ 핵심 변경
+    # user_tags = Column(JSON, nullable=True, comment="사용자 생성 태그 배열 ['tag1', 'tag2']")
+    # ai_tags = Column(JSON, nullable=True, comment="AI 생성 태그 객체 [{'tag': 'keyword1', 'confidence': 0.9}]")
+    tags = Column(JSON, nullable=True, comment="아이템 태그 (JSON 형태로 저장)")
+
     # 처리 상태 관리
     processing_status = Column(
         String(20), 
@@ -94,7 +97,6 @@ class Item(Base):
 
     # 관계 설정
     user = relationship("User", back_populates="items")
-    tags = relationship("ItemTag", back_populates="item", cascade="all, delete-orphan")
 
     # 추가 인덱스 정의 (검색 성능 향상)
     __table_args__ = (
@@ -122,78 +124,80 @@ class Item(Base):
         """임베딩이 완료되었는지 확인"""
         return self.content_embedding is not None
 
-    @property
-    def ai_tags(self):
-        """AI 생성 태그만 반환"""
-        return [tag for tag in self.tags if tag.tag_type == "ai"]
+    # @property
+    # def ai_tags(self):
+    #     """AI 생성 태그만 반환"""
+    #     return [tag for tag in self.tags if tag.tag_type == "ai"]
 
-    @property
-    def user_tags(self):
-        """사용자 생성 태그만 반환"""
-        return [tag for tag in self.tags if tag.tag_type == "user"]
+    # @property
+    # def user_tags(self):
+    #     """사용자 생성 태그만 반환"""
+    #     return [tag for tag in self.tags if tag.tag_type == "user"]
 
+# TODO: AI 태그와 사용자 태그를 별도의 테이블로 분리하는 방안 검토
+# 현재는 Item 모델에 JSON 형태로 저장되어 있지만, 별도의 ItemTag 모델로 분리하여 관리하는 것이 더 효율적일 수 있음
 
-class ItemTag(Base):
-    """아이템 태그 테이블 - AI 키워드 + 사용자 태그 통합 관리"""
-    __tablename__ = "item_tags"
+# class ItemTag(Base):
+#     """아이템 태그 테이블 - AI 키워드 + 사용자 태그 통합 관리"""
+#     __tablename__ = "item_tags"
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment="아이템 태그 ID")
-    item_id = Column(
-        Integer, 
-        ForeignKey("items.id", ondelete="CASCADE"), 
-        nullable=False, 
-        index=True,
-        comment="아이템 ID (외래키)"
-    )
-    user_id = Column(
-        Integer, 
-        ForeignKey("users.id", ondelete="CASCADE"), 
-        nullable=False, 
-        index=True,
-        comment="사용자 ID (검색 성능 향상용)"
-    )
-    tag = Column(String(100), nullable=False, comment="태그/키워드명")
-    tag_type = Column(
-        String(20), 
-        nullable=False, 
-        default="user", 
-        comment="태그 타입: user(사용자), ai(AI추천), system(시스템)"
-    )
-    confidence_score = Column(
-        Float, 
-        nullable=True, 
-        comment="AI 태그의 신뢰도 점수 (0.0-1.0), 사용자 태그는 NULL"
-    )
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
+#     id = Column(Integer, primary_key=True, autoincrement=True, comment="아이템 태그 ID")
+#     item_id = Column(
+#         Integer, 
+#         ForeignKey("items.id", ondelete="CASCADE"), 
+#         nullable=False, 
+#         index=True,
+#         comment="아이템 ID (외래키)"
+#     )
+#     user_id = Column(
+#         Integer, 
+#         ForeignKey("users.id", ondelete="CASCADE"), 
+#         nullable=False, 
+#         index=True,
+#         comment="사용자 ID (검색 성능 향상용)"
+#     )
+#     tag = Column(String(100), nullable=False, comment="태그/키워드명")
+#     tag_type = Column(
+#         String(20), 
+#         nullable=False, 
+#         default="user", 
+#         comment="태그 타입: user(사용자), ai(AI추천), system(시스템)"
+#     )
+#     confidence_score = Column(
+#         Float, 
+#         nullable=True, 
+#         comment="AI 태그의 신뢰도 점수 (0.0-1.0), 사용자 태그는 NULL"
+#     )
+#     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
 
-    # 관계 설정
-    item = relationship("Item", back_populates="tags")
-    user = relationship("User")
+#     # 관계 설정
+#     item = relationship("Item", back_populates="tags")
+#     user = relationship("User")
 
-    # 인덱스 추가
-    __table_args__ = (
-        Index('ix_item_tags_user_tag', 'user_id', 'tag'),
-        Index('ix_item_tags_user_type', 'user_id', 'tag_type'),
-        Index('ix_item_tags_tag', 'tag'),
-        Index('ix_item_tags_type', 'tag_type'),
-        Index('ix_item_tags_item_tag', 'item_id', 'tag', unique=True),
-        Index('ix_item_tags_confidence', 'confidence_score'),
-        Index('ix_item_tags_type_confidence', 'tag_type', 'confidence_score'),
-    )
+#     # 인덱스 추가
+#     __table_args__ = (
+#         Index('ix_item_tags_user_tag', 'user_id', 'tag'),
+#         Index('ix_item_tags_user_type', 'user_id', 'tag_type'),
+#         Index('ix_item_tags_tag', 'tag'),
+#         Index('ix_item_tags_type', 'tag_type'),
+#         Index('ix_item_tags_item_tag', 'item_id', 'tag', unique=True),
+#         Index('ix_item_tags_confidence', 'confidence_score'),
+#         Index('ix_item_tags_type_confidence', 'tag_type', 'confidence_score'),
+#     )
 
-    def __repr__(self):
-        confidence_str = f", confidence={self.confidence_score:.2f}" if self.confidence_score else ""
-        return f"<ItemTag(item_id={self.item_id}, tag='{self.tag}', type='{self.tag_type}'{confidence_str})>"
+#     def __repr__(self):
+#         confidence_str = f", confidence={self.confidence_score:.2f}" if self.confidence_score else ""
+#         return f"<ItemTag(item_id={self.item_id}, tag='{self.tag}', type='{self.tag_type}'{confidence_str})>"
 
-    @property
-    def is_ai_tag(self) -> bool:
-        """AI 생성 태그인지 확인"""
-        return self.tag_type == "ai"
+#     @property
+#     def is_ai_tag(self) -> bool:
+#         """AI 생성 태그인지 확인"""
+#         return self.tag_type == "ai"
 
-    @property
-    def is_high_confidence(self) -> bool:
-        """고신뢰도 AI 태그인지 확인 (0.7 이상)"""
-        return self.confidence_score is not None and self.confidence_score >= 0.7
+#     @property
+#     def is_high_confidence(self) -> bool:
+#         """고신뢰도 AI 태그인지 확인 (0.7 이상)"""
+#         return self.confidence_score is not None and self.confidence_score >= 0.7
 
 
 class SearchHistory(Base):

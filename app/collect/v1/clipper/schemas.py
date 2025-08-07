@@ -3,8 +3,9 @@ from pydantic import BaseModel
 
 
 # Request 스키마
-class WebpageSaveRequest(BaseModel):
-    """웹페이지 저장 요청 스키마"""
+class WebpageSyncRequest(BaseModel):
+    """웹페이지 동기화 요청 스키마"""
+    item_id: int
     user_id: int
     thumbnail: str
     title: str
@@ -24,8 +25,8 @@ class SummarizeRequest(BaseModel):
 
 
 # Response 스키마
-class WebpageSaveResponse(BaseModel):
-    """저장만 하기 응답 스키마"""
+class WebpageSyncResponse(BaseModel):
+    """동기화 응답 스키마"""
     success: bool
     message: str
 

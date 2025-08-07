@@ -1,18 +1,100 @@
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, asc
+from sqlalchemy import select, and_, or_, desc, asc, text
 from sqlalchemy.orm import selectinload
 
-from app.core.models import Item, ItemTag, User
+from app.core.models import Item, User
 from .base import BaseRepository
 
 
 class ItemRepository(BaseRepository[Item]):
-    """Item 전용 Repository - Item 관련 특화 기능 제공"""
+    """Item 전용 Repository - JSON 태그 지원"""
     
     def __init__(self):
         super().__init__(Item)
     
+    async def search_by_tag(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        tag: str,
+        skip: int = 0,
+        limit: int = 100
+    ) -> List[Item]:
+        """태그로 Item 검색 (JSON 필드 검색)"""
+        query = select(Item).where(
+            and_(
+                Item.user_id == user_id,
+                or_(
+                    # 사용자 태그에서 검색
+                    Item.user_tags.op('@>')([tag]),
+                    # AI 태그에서 검색 (PostgreSQL JSON 연산자)
+                    text("ai_tags @> '[{\"tag\": \"" + tag + "\"}]'")
+                )
+            )
+        ).order_by(desc(Item.created_at)).offset(skip).limit(limit)
+        
+        result = await session.execute(query)
+        return result.scalars().all()
+    
+    async def get_items_by_multiple_tags(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        tags: List[str],
+        match_all: bool = False,  # True: AND, False: OR
+        skip: int = 0,
+        limit: int = 100
+    ) -> List[Item]:
+        """여러 태그로 Item 검색"""
+        conditions = []
+        
+        for tag in tags:
+            tag_condition = or_(
+                Item.user_tags.op('@>')([tag]),
+                text(f"ai_tags @> '[{{\"tag\": \"{tag}\"}}]'")
+            )
+            conditions.append(tag_condition)
+        
+        if match_all:
+            tag_filter = and_(*conditions)
+        else:
+            tag_filter = or_(*conditions)
+        
+        query = select(Item).where(
+            and_(Item.user_id == user_id, tag_filter)
+        ).order_by(desc(Item.created_at)).offset(skip).limit(limit)
+        
+        result = await session.execute(query)
+        return result.scalars().all()
+    
+    async def get_popular_tags(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """인기 태그 조회 (JSON 필드 집계)"""
+        # PostgreSQL JSON 집계 쿼리
+        query = text("""
+            SELECT tag, count(*) as usage_count
+            FROM (
+                SELECT jsonb_array_elements_text(user_tags) as tag
+                FROM items 
+                WHERE user_id = :user_id AND user_tags IS NOT NULL
+                UNION ALL
+                SELECT (jsonb_array_elements(ai_tags)->>'tag') as tag
+                FROM items 
+                WHERE user_id = :user_id AND ai_tags IS NOT NULL
+            ) tags
+            GROUP BY tag
+            ORDER BY usage_count DESC
+            LIMIT :limit
+        """)
+        
+        result = await session.execute(query, {"user_id": user_id, "limit": limit})
+        return [{"tag": row.tag, "count": row.usage_count} for row in result]
+
     async def get_by_id_with_tags(self, session: AsyncSession, item_id: int) -> Optional[Item]:
         """태그와 함께 Item 조회"""
         result = await session.execute(
@@ -112,25 +194,6 @@ class ItemRepository(BaseRepository[Item]):
             query = query.where(Item.user_id == user_id)
         
         query = query.order_by(asc(Item.created_at)).offset(skip).limit(limit)
-        
-        result = await session.execute(query)
-        return result.scalars().all()
-    
-    async def get_items_with_tags(
-        self,
-        session: AsyncSession,
-        user_id: int,
-        tag_names: List[str],
-        skip: int = 0,
-        limit: int = 100
-    ) -> List[Item]:
-        """특정 태그들을 가진 Item 조회"""
-        query = select(Item).join(ItemTag).where(
-            and_(
-                Item.user_id == user_id,
-                ItemTag.tag.in_(tag_names)
-            )
-        ).distinct().order_by(desc(Item.created_at)).offset(skip).limit(limit)
         
         result = await session.execute(query)
         return result.scalars().all()

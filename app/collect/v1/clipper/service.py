@@ -1,11 +1,12 @@
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func
 
 from app.core.repository import ItemRepository, UserRepository
 from .schemas import (
-    WebpageSaveRequest,
+    WebpageSyncRequest,
     SummarizeRequest,
-    WebpageSaveResponse,
+    WebpageSyncResponse,
     SummarizeResponse,
 )
 
@@ -17,34 +18,58 @@ class ClipperService:
         self.user_repository = UserRepository()
         self.item_repository = ItemRepository()
     
-    async def save_webpage(
+    async def sync_webpage(
         self, 
-        request_data: WebpageSaveRequest, 
-        session: AsyncSession
-    ) -> WebpageSaveResponse:
+        session: AsyncSession,
+        request_data: WebpageSyncRequest
+    ) -> WebpageSyncResponse:
         """
-        저장만 하기 비즈니스 로직
+        Spring Boot에서 생성된 Item ID를 사용하여 동기화
         """
         try:
             # 사용자 존재 확인 및 생성
             user = await self.user_repository.get_or_create(session, user_id=request_data.user_id)
 
-            item = await self.item_repository.create(
-                session,
-                user_id=user.id,
-                item_type="webpage",
-                source_url=request_data.url,
-                thumbnail=request_data.thumbnail,
-                title=request_data.title,
-                raw_content=request_data.html_content,
-                processing_status="raw",
-                is_active=True
-            )
+            existing_item = await self.item_repository.get_by_id(session, request_data.item_id)
+            if existing_item:
+                item = await self.item_repository.update(
+                    session,
+                    request_data.item_id,
+                    user_id=user.id,
+                    item_type="webpage",
+                    title=request_data.title,
+                    source_url=request_data.url,
+                    thumbnail=request_data.thumbnail,
+                    raw_content=request_data.html_content,
+                    summary=request_data.summary,
+                    category=request_data.category,
+                    memo=request_data.memo,
+                    tags=request_data.keywords or [],
+                    processing_status="raw",
+                    updated_at=func.now(),
+                    is_active=True
+                )
+            else:
+                item = await self.item_repository.create(
+                    session,
+                    id=request_data.item_id,
+                    user_id=user.id,
+                    item_type="webpage",
+                    title=request_data.title,
+                    source_url=request_data.url,
+                    thumbnail=request_data.thumbnail,
+                    raw_content=request_data.html_content,
+                    summary=request_data.summary,
+                    category=request_data.category,
+                    memo=request_data.memo,
+                    tags=request_data.keywords or [],
+                    processing_status="raw",
+                    is_active=True
+                )
 
-            return WebpageSaveResponse(
+            return WebpageSyncResponse(
                 success=True,
-                message="콘텐츠가 성공적으로 저장되었습니다.",
-                item_id=str(item.id)
+                message="콘텐츠가 성공적으로 저장되었습니다."
             )
         
         except Exception as e:

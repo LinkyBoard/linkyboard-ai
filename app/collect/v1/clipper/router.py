@@ -1,9 +1,11 @@
 from typing import Optional
-from fastapi import APIRouter, HTTPException, File, UploadFile, Form
+from fastapi import APIRouter, HTTPException, File, UploadFile, Form, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.database import get_db
 from .schemas import (
-    WebpageSaveRequest,
+    WebpageSyncRequest,
     SummarizeResponse,
-    WebpageSaveResponse,
+    WebpageSyncResponse,
     SummarizeRequest,
 )
 from .service import clipper_service
@@ -21,17 +23,19 @@ router = APIRouter(
 )
 
 # API 엔드포인트 정의
-@router.post("/webpage/save", response_model=WebpageSaveResponse)
-async def save_webpage(
+@router.post("/webpage/sync", response_model=WebpageSyncResponse)
+async def sync_webpage(
+    item_id: int = Form(..., description="Item ID"),
     user_id: int = Form(..., description="사용자 ID"),
     thumbnail: str = Form(..., description="썸네일 이미지 (URL)"),
     title: str = Form(..., description="페이지 제목"),
     url: str = Form(..., description="페이지 URL"),
     summary: Optional[str] = Form(None, description="페이지 요약"),
-    keywords: Optional[list[str]] = Form(None, description="키워드 (콤마로 구분)"),
+    keywords: Optional[list[str]] = Form(None, description="키워드 목록"),
     category: str = Form(..., description="카테고리"),
     memo: Optional[str] = Form(None, description="사용자 메모"),
-    html_file: UploadFile = File(..., description="HTML 파일")
+    html_file: UploadFile = File(..., description="HTML 파일"),
+    session: AsyncSession = Depends(get_db)  # 의존성 주입으로 세션 관리
 ):
     """
     webpage 저장
@@ -44,20 +48,21 @@ async def save_webpage(
         html_content_str = html_content.decode('utf-8')
         
         # 요청 데이터 생성
-        request_data = WebpageSaveRequest(
+        request_data = WebpageSyncRequest(
+            item_id=item_id,
             user_id=user_id,
             thumbnail=thumbnail,
             title=title,
             url=url,
             summary=summary,
-            keywords=[keyword.strip() for keyword in keywords.split(',') if keyword.strip()],
+            keywords=keywords or [],
             category=category,
             memo=memo,
             html_content=html_content_str
         )
-        
+
         # 서비스 레이어 호출
-        result = await clipper_service.save_webpage(request_data)
+        result = await clipper_service.sync_webpage(session, request_data)
         return result
         
     except Exception as e:
