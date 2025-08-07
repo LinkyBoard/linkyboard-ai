@@ -1,4 +1,6 @@
 from typing import Optional
+
+from app.core.repository import ItemRepository, UserRepository
 from .schemas import (
     SaveOnlyRequest,
     SummarizeRequest,
@@ -13,24 +15,33 @@ class ClipperService:
     """클리퍼 비즈니스 로직 서비스"""
     
     def __init__(self):
-        # TODO: 의존성 주입 (AI 서비스, 스토리지 서비스 등)
-        pass
+        self.user_repository = UserRepository()
+        self.item_repository = ItemRepository()
     
     async def save_only(self, request_data: SaveOnlyRequest) -> SaveOnlyResponse:
         """
         저장만 하기 비즈니스 로직
         """
         try:
-            # TODO: AI 서비스 호출하여 저장 처리
-            # ai_response = await self.ai_service.save_content(
-            #     request_data.url, 
-            #     request_data.html_content
-            # )
-            
+            # 사용자 존재 확인 및 생성
+            user = await self.user_repository.get_or_create(request_data.user_id)
+
+            item = await self.item_repository.create(
+                user_id=user.id,
+                item_type="webpage",
+                source_url=request_data.url,
+                thumbnail=request_data.thumbnail,
+                title=request_data.title,
+                raw_content=request_data.html_content,
+                processing_status="raw",
+                is_active=True
+            )
+
             return SaveOnlyResponse(
                 success=True,
                 message="콘텐츠가 성공적으로 저장되었습니다."
             )
+        
         except Exception as e:
             raise Exception(f"저장 중 오류가 발생했습니다: {str(e)}")
     
