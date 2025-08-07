@@ -1,6 +1,9 @@
 import openai
 from typing import List, Dict, Any
 from app.core.config import settings
+from app.core.logging import get_logger
+
+logger = get_logger("openai_service")
 
 
 class OpenAIService:
@@ -8,6 +11,7 @@ class OpenAIService:
     
     def __init__(self, api_key: str):
         self.client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        logger.info("OpenAI service initialized")
 
     async def generate_webpage_tags(
         self, 
@@ -18,10 +22,11 @@ class OpenAIService:
     ) -> List[str]:
         """웹페이지 태그 생성"""
         try:
+            logger.bind(ai=True).info(f"Generating tags for summary (length: {len(summary)})")
             
             prompt = f"""
             다음 웹페이지 내용을 분석하여 {tag_count}개의 태그를 생성해주세요.
-            바로 저장할 수 있도록 태그만 작성해주세요.
+            바로 저장할 수 있도록 응답은 태그만 작성해주세요.
             각 태그는 쉼표로 구분해주세요.
             태그는 한글 또는 영어의 명사형 단어로 작성해주세요.
             사용자가 이전에 저장한 유사 태그가 있다면, 그 태그도 함께 고려해주세요.
@@ -41,9 +46,13 @@ class OpenAIService:
             )
             
             content = response.choices[0].message.content
-            return [k.strip() for k in content.split(',') if k.strip()]
+            tags = [k.strip() for k in content.split(',') if k.strip()]
+            
+            logger.bind(ai=True).info(f"Generated {len(tags)} tags: {tags}")
+            return tags
             
         except Exception as e:
+            logger.bind(ai=True).error(f"Failed to generate tags: {str(e)}")
             raise Exception(f"OpenAI API 호출 중 오류: {str(e)}")
 
     async def recommend_webpage_category(
@@ -54,6 +63,8 @@ class OpenAIService:
     ) -> str:
         """웹페이지 카테고리 추천"""
         try:
+            logger.bind(ai=True).info(f"Recommending category for summary (length: {len(summary)})")
+            
             prompt = f"""
             다음 웹페이지 내용을 분석하여 적절한 단 하나의 카테고리를 추천해주세요.
             바로 저장할 수 있도록 카테고리만 작성해주세요.
@@ -76,9 +87,11 @@ class OpenAIService:
             )
             
             content = response.choices[0].message.content.strip()
+            logger.bind(ai=True).info(f"Recommended category: {content}")
             return content
             
         except Exception as e:
+            logger.bind(ai=True).error(f"Failed to recommend category: {str(e)}")
             raise Exception(f"OpenAI API 호출 중 오류: {str(e)}")
 
     async def generate_webpage_summary(
@@ -90,6 +103,9 @@ class OpenAIService:
         """웹페이지 요약 생성"""
         try:
             # text_content = self._extract_text_from_html(html_content)
+            # NOTE: 현재는 url을 사용해서 openai에서 요약을 생성
+            # 이후에 html_content를 사용해서 요약을 생성할 수 있도록 변경 예정
+            logger.bind(ai=True).info("Generating summary for URL = %s", url)
 
             prompt = f"""
             다음 웹페이지 내용을 분석하여 요약을 생성해주세요.
@@ -109,9 +125,11 @@ class OpenAIService:
             )
 
             content = response.choices[0].message.content.strip()
+            logger.bind(ai=True).info(f"Generated summary (length: {len(content)})")
             return content
             
         except Exception as e:
+            logger.bind(ai=True).error(f"Failed to generate summary for {url}: {str(e)}")
             raise Exception(f"OpenAI API 호출 중 오류: {str(e)}")
     
     def _extract_text_from_html(self, html_content: str) -> str:

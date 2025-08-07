@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     
     # CORS 설정
     ALLOWED_HOSTS: list = ["*"]
+
+    # 로깅 설정
+    LOG_LEVEL: str = "INFO"
+    LOG_DIR: str = "logs"
+    LOG_RETENTION: str = "30 days"
+    LOG_ROTATION: str = "100 MB"
+    LOG_FORMAT: str = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}"
     
     @field_validator("POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB")
     @classmethod

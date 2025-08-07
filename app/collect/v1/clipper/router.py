@@ -2,6 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, File, UploadFile, Form, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
+from app.core.logging import get_logger
 from .schemas import (
     WebpageSyncRequest,
     SummarizeResponse,
@@ -9,6 +10,8 @@ from .schemas import (
     SummarizeRequest,
 )
 from .service import clipper_service
+
+logger = get_logger("clipper_router")
 
 # Router 인스턴스 생성
 router = APIRouter(
@@ -43,9 +46,12 @@ async def sync_webpage(
     클라이언트로부터 webpage의 썸네일, 제목, URL, HTML 파일을 받아서 저장만 처리합니다.
     """
     try:
+        logger.info(f"Received webpage sync request for item {item_id}, user {user_id}")
+        
         # HTML 파일 내용 읽기
         html_content = await html_file.read()
         html_content_str = html_content.decode('utf-8')
+        logger.info(f"HTML content size: {len(html_content_str)} characters")
         
         # 요청 데이터 생성
         request_data = WebpageSyncRequest(
@@ -63,9 +69,11 @@ async def sync_webpage(
 
         # 서비스 레이어 호출
         result = await clipper_service.sync_webpage(session, request_data)
+        logger.info(f"Webpage sync completed successfully for item {item_id}")
         return result
         
     except Exception as e:
+        logger.error(f"Failed to sync webpage for item {item_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -80,9 +88,12 @@ async def summarize_webpage(
     클라이언트로부터 페이지 URL과 HTML 파일을 받아서 요약, 키워드, 카테고리를 생성합니다.
     """
     try:
+        logger.info(f"Received summarize request for URL: {url}")
+        
         # HTML 파일 내용 읽기
         html_content = await html_file.read()
         html_content_str = html_content.decode('utf-8')
+        logger.info(f"HTML content size: {len(html_content_str)} characters")
         
         # 요청 데이터 생성
         request_data = SummarizeRequest(
@@ -92,8 +103,10 @@ async def summarize_webpage(
         
         # 서비스 레이어 호출
         result = await clipper_service.generate_webpage_summary(request_data)
+        logger.info(f"Summarize completed successfully for URL: {url}")
         return result
         
     except Exception as e:
+        logger.error(f"Failed to summarize webpage for URL {url}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 

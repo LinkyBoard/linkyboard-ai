@@ -242,3 +242,8 @@ pyrightconfig.json
 # 로컬 테스트용 데이터베이스 설정 파일 (만약 있다면)
 # local_alembic.ini
 # test_alembic.ini
+
+# 로그 파일들
+logs/
+*.log
+*.log.*

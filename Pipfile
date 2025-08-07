@@ -15,6 +15,7 @@ psycopg2-binary = "*"
 pydantic-settings = "*"
 python-multipart = "*"
 openai = "*"
+loguru = "*"
 
 [dev-packages]
 
