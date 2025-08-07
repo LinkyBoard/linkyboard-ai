@@ -12,6 +12,7 @@ sqlalchemy = {extras = ["asyncio"], version = "*"}
 asyncpg = "*"
 pgvector = "*"
 psycopg2-binary = "*"
+pydantic-settings = "*"
 
 [dev-packages]
 

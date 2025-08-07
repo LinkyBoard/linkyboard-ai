@@ -8,12 +8,52 @@ import uuid
 from app.core.database import Base
 
 
+class User(Base):
+    """사용자 기본 정보 테이블 - 서비스 서버와 동기화용"""
+    __tablename__ = "users"
+    
+    # 서비스 서버의 사용자 ID와 동일한 UUID 사용
+    # NOTE: AI 서비스에 필요한 최소 정보만 저장, 필요한 경우 추후 추가
+    id = Column(UUID(as_uuid=True), primary_key=True, comment="서비스 서버의 사용자 ID")
+
+    # AI 서비스 전용 설정
+    ai_preferences = Column(Text, nullable=True, comment="AI 개인화 설정 (JSON)")
+    embedding_model_version = Column(String(50), nullable=True, comment="사용 중인 임베딩 모델 버전")
+    
+    # 상태 관리
+    is_active = Column(Boolean, default=True, nullable=False, comment="활성 상태")
+    last_sync_at = Column(DateTime(timezone=True), nullable=True, comment="서비스 서버와 마지막 동기화 시간")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    
+    # 관계 설정
+    items = relationship("Item", back_populates="user", cascade="all, delete-orphan")
+    search_histories = relationship("SearchHistory", back_populates="user")
+    
+    __table_args__ = (
+        Index('ix_users_active', 'is_active'),
+        Index('ix_users_sync_time', 'last_sync_at'),
+    )
+    
+    def __repr__(self):
+        return f"<User(id={self.id}, active={self.is_active})>"
+
+
 class Item(Base):
     """아이템 테이블 - 다양한 타입의 콘텐츠를 저장 (웹페이지, PDF, 유튜브, 이미지 등)"""
     __tablename__ = "items"
 
     # 기본 식별자
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # 사용자 관계 추가
+    user_id = Column(
+        UUID(as_uuid=True), 
+        ForeignKey("users.id", ondelete="CASCADE"), 
+        nullable=False, 
+        index=True,
+        comment="사용자 ID (외래키)"
+    )
     
     # 콘텐츠 타입 및 소스 정보
     item_type = Column(
@@ -22,7 +62,7 @@ class Item(Base):
         default="webpage", 
         comment="아이템 타입: webpage(웹페이지), pdf(PDF문서), youtube(유튜브), image(이미지), document(문서) 등"
     )
-    source_url = Column(String(2048), nullable=False, unique=True, index=True, comment="원본 소스 URL")
+    source_url = Column(String(2048), nullable=False, index=True, comment="원본 소스 URL")
     
     # 기본 메타데이터 (모든 타입 공통)
     title = Column(String(500), nullable=False, comment="제목")
@@ -55,16 +95,20 @@ class Item(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True, comment="수정일시")
 
     # 관계 설정
+    user = relationship("User", back_populates="items")
     tags = relationship("ItemTag", back_populates="item", cascade="all, delete-orphan")
 
     # 추가 인덱스 정의 (검색 성능 향상)
     __table_args__ = (
+        Index('ix_items_user_id', 'user_id'),
+        Index('ix_items_user_type', 'user_id', 'item_type'),
+        Index('ix_items_user_status', 'user_id', 'processing_status'),
+        Index('ix_items_source_url', 'source_url', unique=True),  # 사용자별로는 중복 가능하지만 전체적으로는 unique
         Index('ix_items_type', 'item_type'),
         Index('ix_items_category', 'category'),
         Index('ix_items_processing_status', 'processing_status'),
         Index('ix_items_created_at', 'created_at'),
-        Index('ix_items_title_trgm', 'title', postgresql_using='gin', postgresql_ops={'title': 'gin_trgm_ops'}),  # 제목 전문검색용
-        Index('ix_items_type_status', 'item_type', 'processing_status'),  # 복합 인덱스
+        Index('ix_items_type_status', 'item_type', 'processing_status'),
     )
 
     def __repr__(self):
@@ -103,6 +147,13 @@ class ItemTag(Base):
         index=True,
         comment="아이템 ID (외래키)"
     )
+    user_id = Column(
+        UUID(as_uuid=True), 
+        ForeignKey("users.id", ondelete="CASCADE"), 
+        nullable=False, 
+        index=True,
+        comment="사용자 ID (검색 성능 향상용)"
+    )
     tag = Column(String(100), nullable=False, comment="태그/키워드명")
     tag_type = Column(
         String(20), 
@@ -119,14 +170,17 @@ class ItemTag(Base):
 
     # 관계 설정
     item = relationship("Item", back_populates="tags")
+    user = relationship("User")
 
     # 인덱스 추가
     __table_args__ = (
+        Index('ix_item_tags_user_tag', 'user_id', 'tag'),
+        Index('ix_item_tags_user_type', 'user_id', 'tag_type'),
         Index('ix_item_tags_tag', 'tag'),
         Index('ix_item_tags_type', 'tag_type'),
-        Index('ix_item_tags_item_tag', 'item_id', 'tag', unique=True),  # 중복 태그 방지
-        Index('ix_item_tags_confidence', 'confidence_score'),  # AI 태그 신뢰도별 정렬
-        Index('ix_item_tags_type_confidence', 'tag_type', 'confidence_score'),  # 복합 인덱스
+        Index('ix_item_tags_item_tag', 'item_id', 'tag', unique=True),
+        Index('ix_item_tags_confidence', 'confidence_score'),
+        Index('ix_item_tags_type_confidence', 'tag_type', 'confidence_score'),
     )
 
     def __repr__(self):
@@ -149,6 +203,16 @@ class SearchHistory(Base):
     __tablename__ = "search_histories"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # 사용자 관계 추가
+    user_id = Column(
+        UUID(as_uuid=True), 
+        ForeignKey("users.id", ondelete="CASCADE"), 
+        nullable=False, 
+        index=True,
+        comment="사용자 ID (외래키)"
+    )
+    
     query = Column(String(500), nullable=False, comment="검색 쿼리")
     query_embedding = Column(Vector(1536), nullable=True, comment="검색 쿼리 벡터 임베딩")
     search_type = Column(
@@ -164,8 +228,13 @@ class SearchHistory(Base):
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="검색일시")
 
+    # 관계 설정
+    user = relationship("User", back_populates="search_histories")
+
     # 인덱스 추가
     __table_args__ = (
+        Index('ix_search_histories_user_id', 'user_id'),
+        Index('ix_search_histories_user_query', 'user_id', 'query'),
         Index('ix_search_histories_query', 'query'),
         Index('ix_search_histories_type', 'search_type'),
         Index('ix_search_histories_created_at', 'created_at'),
