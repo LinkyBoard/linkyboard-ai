@@ -2,6 +2,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func
 
+from app.ai.openai_service import openai_service
 from app.core.repository import ItemRepository, UserRepository
 from .schemas import (
     WebpageSyncRequest,
@@ -17,7 +18,8 @@ class ClipperService:
     def __init__(self):
         self.user_repository = UserRepository()
         self.item_repository = ItemRepository()
-    
+        self.openai_service = openai_service
+
     async def sync_webpage(
         self, 
         session: AsyncSession,
@@ -80,16 +82,23 @@ class ClipperService:
         요약 생성 비즈니스 로직
         """
         try:
-            # TODO: AI 서비스 호출하여 요약 생성
-            # ai_response = await self.ai_service.generate_summary(
-            #     request_data.url,
-            #     request_data.html_content
-            # )
+            summary = await self.openai_service.generate_webpage_summary(
+                url=request_data.url,
+                html_content=request_data.html_content
+            )
+
+            tags = await self.openai_service.generate_webpage_tags(
+                summary = summary
+            )
+
+            category = await self.openai_service.recommend_webpage_category(
+                summary = summary
+            )
             
             return SummarizeResponse(
-                summary="이것은 웹페이지의 요약 내용입니다.",
-                tags=["태그1", "태그2", "태그3"],
-                category="기술"
+                summary=summary,
+                tags=tags,
+                category=category
             )
         except Exception as e:
             raise Exception(f"요약 생성 중 오류가 발생했습니다: {str(e)}")

@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     DB_MAX_OVERFLOW: int = 0
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 3600
+
+    # OpenAI 설정
+    OPENAI_API_KEY: str
+    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    OPENAI_MODEL: str = "gpt-3.5-turbo"
     
     # 애플리케이션 설정
     APP_NAME: str = "LinkyBoard AI"
