@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, HTTPException, File, UploadFile, Form, Depends
+from fastapi import APIRouter, BackgroundTasks, HTTPException, File, UploadFile, Form, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.logging import get_logger
@@ -28,6 +28,7 @@ router = APIRouter(
 # API 엔드포인트 정의
 @router.post("/webpage/sync", response_model=WebpageSyncResponse)
 async def sync_webpage(
+    background_tasks: BackgroundTasks,
     item_id: int = Form(..., description="Item ID"),
     user_id: int = Form(..., description="사용자 ID"),
     thumbnail: str = Form(..., description="썸네일 이미지 (URL)"),
@@ -68,7 +69,7 @@ async def sync_webpage(
         )
 
         # 서비스 레이어 호출
-        result = await clipper_service.sync_webpage(session, request_data)
+        result = await clipper_service.sync_webpage(session, background_tasks, request_data)
         logger.info(f"Webpage sync completed successfully for item {item_id}")
         return result
         

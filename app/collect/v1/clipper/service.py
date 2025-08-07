@@ -1,6 +1,9 @@
+import asyncio
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func
+from fastapi import BackgroundTasks
+from datetime import datetime
 
 from app.ai.openai_service import openai_service
 from app.core.repository import ItemRepository
@@ -25,10 +28,104 @@ class ClipperService:
         self.openai_service = openai_service
         logger.info("Clipper service initialized")
 
+    async def _process_embedding_with_monitoring(self, item_id: str, html_content: str):
+        """
+        백그라운드 태스크로 임베딩 처리
+        """
+        start_time = datetime.now()
+        logger.bind(
+            task_type="embedding",
+            item_id=item_id,
+            status="started",
+            timestamp=start_time.isoformat()
+        ).info(f"Starting embedding process for item {item_id}")
+
+        try:
+            # DB 세션 생성
+            from app.core.database import get_db
+            async for session in get_db():
+                try:
+                    await self.item_repository.update_processing_status(
+                        session,
+                        item_id,
+                        "in_progress"
+                    )
+                    logger.bind(
+                        task_type="embedding",
+                        item_id=item_id,
+                        status="processing"
+                    ).info(f"Status updated to processing for item {item_id}")
+                    
+                    embedding_result = await self._generate_embedding(html_content)
+
+                    await self.item_repository.update_processing_status(
+                        session,
+                        item_id,
+                        "embedded",
+                        additional_data={"content_embedding": embedding_result}
+                    )
+
+                    end_time = datetime.now()
+                    duration = (end_time - start_time).total_seconds()
+                    
+                    logger.bind(
+                        task_type="embedding",
+                        item_id=item_id,
+                        status="completed",
+                        duration_seconds=duration,
+                        embedding_size=len(embedding_result) if embedding_result else 0,
+                        timestamp=end_time.isoformat()
+                    ).info(f"Embedding completed for item {item_id} in {duration:.2f}s")
+
+                    break
+                except Exception as e:
+                    await session.rollback()
+                    raise e
+        except Exception as e:
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            logger.bind(
+                task_type="embedding",
+                item_id=item_id,
+                status="failed",
+                error=str(e),
+                duration_seconds=duration,
+                timestamp=end_time.isoformat()
+            ).error(f"Embedding failed for item {item_id}: {str(e)}")
+            
+            try:
+                async for session in get_db():
+                    try:
+                        await self.item_repository.update_processing_status(
+                            session, 
+                            item_id, 
+                            "embedding_failed"
+                        )
+                        break
+                    except Exception as db_error:
+                        await session.rollback()
+                        logger.error(f"Failed to update error status for item {item_id}: {str(db_error)}")
+                        break
+            except Exception as final_error:
+                logger.error(f"Critical error updating status for item {item_id}: {str(final_error)}")
+    
+    async def _generate_embedding(self, html_content: str) -> Optional[list]:
+        """
+        OpenAI를 사용하여 HTML 콘텐츠의 임베딩 생성
+        """
+        try:
+            embedding = await self.openai_service.generate_webpage_embedding(html_content)
+            return embedding
+        except Exception as e:
+            logger.error(f"Failed to generate embedding: {str(e)}")
+            return None
+        
+
     async def sync_webpage(
         self, 
         session: AsyncSession,
-        request_data: WebpageSyncRequest
+        background_tasks: BackgroundTasks,
+        request_data: WebpageSyncRequest,
     ) -> WebpageSyncResponse:
         """
         Spring Boot에서 생성된 Item ID를 사용하여 동기화
@@ -78,6 +175,15 @@ class ClipperService:
                     processing_status="raw",
                     is_active=True
                 )
+
+            # 백그라운드 태스크로 임베딩 처리
+            if background_tasks and request_data.html_content:
+                background_tasks.add_task(
+                    self._process_embedding_with_monitoring,
+                    request_data.item_id,
+                    request_data.html_content,
+                )
+                logger.info(f"Background task for embedding processing added for item {request_data.item_id}")
 
             logger.bind(database=True).info(f"Item {request_data.item_id} saved successfully")
             return WebpageSyncResponse(

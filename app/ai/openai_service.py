@@ -139,6 +139,34 @@ class OpenAIService:
         text = re.sub(r'\s+', ' ', text).strip()
         return text
 
+    async def _generate_embedding(self, content: str) -> List[float]:
+        """임베딩 생성"""
+        try:
+            logger.bind(ai=True).info("Generating embedding for web content")
+            
+            response = await self.client.embeddings.create(
+                model=settings.OPENAI_EMBEDDING_MODEL,
+                input=content
+            )
+            
+            embedding = response.data[0].embedding
+            logger.bind(ai=True).info(f"Generated embedding of length {len(embedding)}")
+            return embedding
+            
+        except Exception as e:
+            logger.bind(ai=True).error(f"Failed to generate embedding: {str(e)}")
+            raise Exception(f"OpenAI API 호출 중 오류: {str(e)}")
+
+    async def generate_webpage_embedding(self, html_content: str) -> List[float]:
+        """웹페이지 HTML 콘텐츠에 대한 임베딩 생성"""
+        try:
+            logger.bind(ai=True).info("Generating embedding for webpage HTML content")
+            contents = self._extract_text_from_html(html_content)
+            return await self._generate_embedding(contents)
+        except Exception as e:
+            logger.bind(ai=True).error(f"Failed to generate webpage embedding: {str(e)}")
+            raise Exception(f"OpenAI API 호출 중 오류: {str(e)}")
+
 
 # 서비스 인스턴스 생성
 openai_service = OpenAIService(api_key=settings.OPENAI_API_KEY)
