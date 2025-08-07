@@ -43,6 +43,7 @@ async def save_only(
         
         # 요청 데이터 생성
         request_data = SaveOnlyRequest(
+            user_id=user_id,
             thumbnail=thumbnail,
             title=title,
             url=url,
@@ -108,6 +109,7 @@ async def save_with_summary(
         
         # 요청 데이터 생성
         request_data = SaveWithSummaryRequest(
+            user_id=user_id,
             thumbnail=thumbnail,
             title=title,
             url=url,
