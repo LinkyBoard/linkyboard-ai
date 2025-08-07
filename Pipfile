@@ -13,6 +13,7 @@ asyncpg = "*"
 pgvector = "*"
 psycopg2-binary = "*"
 pydantic-settings = "*"
+python-multipart = "*"
 
 [dev-packages]
 
