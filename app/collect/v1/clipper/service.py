@@ -88,7 +88,7 @@ class ClipperService:
             
             return SummarizeResponse(
                 summary="이것은 웹페이지의 요약 내용입니다.",
-                keywords=["키워드1", "키워드2", "키워드3"],
+                tags=["태그1", "태그2", "태그3"],
                 category="기술"
             )
         except Exception as e:

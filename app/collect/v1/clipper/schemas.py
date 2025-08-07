@@ -34,5 +34,5 @@ class WebpageSyncResponse(BaseModel):
 class SummarizeResponse(BaseModel):
     """요약 생성 응답 스키마"""
     summary: str
-    keywords: list[str]
+    tags: list[str]
     category: str
