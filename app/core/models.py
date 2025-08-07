@@ -1,9 +1,7 @@
 from sqlalchemy import Column, String, Text, DateTime, Integer, Boolean, ForeignKey, Index, Float
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
-import uuid
 
 from app.core.database import Base
 
@@ -12,9 +10,9 @@ class User(Base):
     """사용자 기본 정보 테이블 - 서비스 서버와 동기화용"""
     __tablename__ = "users"
     
-    # 서비스 서버의 사용자 ID와 동일한 UUID 사용
+    # 서비스 서버의 사용자 ID와 동일한 Long 사용
     # NOTE: AI 서비스에 필요한 최소 정보만 저장, 필요한 경우 추후 추가
-    id = Column(UUID(as_uuid=True), primary_key=True, comment="서비스 서버의 사용자 ID")
+    id = Column(Integer, primary_key=True, comment="서비스 서버의 사용자 ID")
 
     # AI 서비스 전용 설정
     ai_preferences = Column(Text, nullable=True, comment="AI 개인화 설정 (JSON)")
@@ -44,11 +42,11 @@ class Item(Base):
     __tablename__ = "items"
 
     # 기본 식별자
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="아이템 ID")
     
     # 사용자 관계 추가
     user_id = Column(
-        UUID(as_uuid=True), 
+        Integer, 
         ForeignKey("users.id", ondelete="CASCADE"), 
         nullable=False, 
         index=True,
@@ -139,16 +137,16 @@ class ItemTag(Base):
     """아이템 태그 테이블 - AI 키워드 + 사용자 태그 통합 관리"""
     __tablename__ = "item_tags"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="아이템 태그 ID")
     item_id = Column(
-        UUID(as_uuid=True), 
+        Integer, 
         ForeignKey("items.id", ondelete="CASCADE"), 
         nullable=False, 
         index=True,
         comment="아이템 ID (외래키)"
     )
     user_id = Column(
-        UUID(as_uuid=True), 
+        Integer, 
         ForeignKey("users.id", ondelete="CASCADE"), 
         nullable=False, 
         index=True,
@@ -202,11 +200,11 @@ class SearchHistory(Base):
     """검색 히스토리 테이블 - 사용자 검색 기록 및 성능 분석용"""
     __tablename__ = "search_histories"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="검색 기록 ID")
     
     # 사용자 관계 추가
     user_id = Column(
-        UUID(as_uuid=True), 
+        Integer, 
         ForeignKey("users.id", ondelete="CASCADE"), 
         nullable=False, 
         index=True,

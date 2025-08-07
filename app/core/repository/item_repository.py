@@ -2,7 +2,6 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, desc, asc
 from sqlalchemy.orm import selectinload
-from uuid import UUID
 
 from app.core.models import Item, ItemTag, User
 from .base import BaseRepository
@@ -14,7 +13,7 @@ class ItemRepository(BaseRepository[Item]):
     def __init__(self):
         super().__init__(Item)
     
-    async def get_by_id_with_tags(self, session: AsyncSession, item_id: UUID) -> Optional[Item]:
+    async def get_by_id_with_tags(self, session: AsyncSession, item_id: int) -> Optional[Item]:
         """태그와 함께 Item 조회"""
         result = await session.execute(
             select(Item)
@@ -26,7 +25,7 @@ class ItemRepository(BaseRepository[Item]):
     async def get_by_user_id(
         self, 
         session: AsyncSession, 
-        user_id: UUID,
+        user_id: int,
         skip: int = 0,
         limit: int = 100,
         item_type: Optional[str] = None,
@@ -57,7 +56,7 @@ class ItemRepository(BaseRepository[Item]):
     async def search_by_title_or_description(
         self,
         session: AsyncSession,
-        user_id: UUID,
+        user_id: int,
         search_term: str,
         skip: int = 0,
         limit: int = 50
@@ -82,7 +81,7 @@ class ItemRepository(BaseRepository[Item]):
     async def get_by_category(
         self,
         session: AsyncSession,
-        user_id: UUID,
+        user_id: int,
         category: str,
         skip: int = 0,
         limit: int = 100
@@ -102,7 +101,7 @@ class ItemRepository(BaseRepository[Item]):
         self,
         session: AsyncSession,
         processing_status: str,
-        user_id: Optional[UUID] = None,
+        user_id: Optional[int] = None,
         skip: int = 0,
         limit: int = 100
     ) -> List[Item]:
@@ -120,7 +119,7 @@ class ItemRepository(BaseRepository[Item]):
     async def get_items_with_tags(
         self,
         session: AsyncSession,
-        user_id: UUID,
+        user_id: int,
         tag_names: List[str],
         skip: int = 0,
         limit: int = 100
@@ -139,7 +138,7 @@ class ItemRepository(BaseRepository[Item]):
     async def update_processing_status(
         self,
         session: AsyncSession,
-        item_id: UUID,
+        item_id: int,
         new_status: str,
         additional_data: Optional[Dict[str, Any]] = None
     ) -> Optional[Item]:
@@ -154,7 +153,7 @@ class ItemRepository(BaseRepository[Item]):
     async def get_statistics_by_user(
         self,
         session: AsyncSession,
-        user_id: UUID
+        user_id: int
     ) -> Dict[str, Any]:
         """사용자별 Item 통계 조회"""
         from sqlalchemy import func, case
@@ -191,7 +190,7 @@ class ItemRepository(BaseRepository[Item]):
     async def get_recent_items(
         self,
         session: AsyncSession,
-        user_id: UUID,
+        user_id: int,
         days: int = 7,
         limit: int = 20
     ) -> List[Item]:
@@ -213,7 +212,7 @@ class ItemRepository(BaseRepository[Item]):
     async def bulk_update_status(
         self,
         session: AsyncSession,
-        item_ids: List[UUID],
+        item_ids: List[int],
         new_status: str
     ) -> int:
         """여러 Item의 상태 일괄 업데이트"""

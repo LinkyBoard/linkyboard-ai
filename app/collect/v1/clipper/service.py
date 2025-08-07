@@ -1,4 +1,5 @@
 from typing import Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.repository import ItemRepository, UserRepository
 from .schemas import (
@@ -18,15 +19,21 @@ class ClipperService:
         self.user_repository = UserRepository()
         self.item_repository = ItemRepository()
     
-    async def save_only(self, request_data: SaveOnlyRequest) -> SaveOnlyResponse:
+    async def save_only(
+        self, 
+        request_data: SaveOnlyRequest, 
+        user_id: int,
+        session: AsyncSession
+    ) -> SaveOnlyResponse:
         """
         저장만 하기 비즈니스 로직
         """
         try:
             # 사용자 존재 확인 및 생성
-            user = await self.user_repository.get_or_create(request_data.user_id)
+            user = await self.user_repository.get_or_create(session, user_id)
 
             item = await self.item_repository.create(
+                session,
                 user_id=user.id,
                 item_type="webpage",
                 source_url=request_data.url,
@@ -39,7 +46,8 @@ class ClipperService:
 
             return SaveOnlyResponse(
                 success=True,
-                message="콘텐츠가 성공적으로 저장되었습니다."
+                message="콘텐츠가 성공적으로 저장되었습니다.",
+                item_id=str(item.id)
             )
         
         except Exception as e:

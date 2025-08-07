@@ -3,7 +3,6 @@ from typing import TypeVar, Generic, List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.orm import selectinload
-from uuid import UUID
 
 # Generic 타입 정의
 ModelType = TypeVar("ModelType")
@@ -23,14 +22,14 @@ class BaseRepository(Generic[ModelType], ABC):
         await session.refresh(entity)
         return entity
     
-    async def get_by_id(self, session: AsyncSession, entity_id: UUID) -> Optional[ModelType]:
+    async def get_by_id(self, session: AsyncSession, entity_id: int) -> Optional[ModelType]:
         """ID로 엔티티 조회"""
         result = await session.execute(
             select(self.model).where(self.model.id == entity_id)
         )
         return result.scalar_one_or_none()
     
-    async def get_by_ids(self, session: AsyncSession, entity_ids: List[UUID]) -> List[ModelType]:
+    async def get_by_ids(self, session: AsyncSession, entity_ids: List[int]) -> List[ModelType]:
         """여러 ID로 엔티티 조회"""
         result = await session.execute(
             select(self.model).where(self.model.id.in_(entity_ids))
@@ -59,7 +58,7 @@ class BaseRepository(Generic[ModelType], ABC):
     async def update(
         self, 
         session: AsyncSession, 
-        entity_id: UUID, 
+        entity_id: int, 
         **kwargs
     ) -> Optional[ModelType]:
         """엔티티 업데이트"""
@@ -82,7 +81,7 @@ class BaseRepository(Generic[ModelType], ABC):
         await session.refresh(entity)
         return entity
     
-    async def delete(self, session: AsyncSession, entity_id: UUID) -> bool:
+    async def delete(self, session: AsyncSession, entity_id: int) -> bool:
         """엔티티 삭제"""
         result = await session.execute(
             delete(self.model).where(self.model.id == entity_id)
@@ -102,7 +101,7 @@ class BaseRepository(Generic[ModelType], ABC):
         result = await session.execute(query)
         return result.scalar()
     
-    async def exists(self, session: AsyncSession, entity_id: UUID) -> bool:
+    async def exists(self, session: AsyncSession, entity_id: int) -> bool:
         """엔티티 존재 여부 확인"""
         result = await session.execute(
             select(self.model.id).where(self.model.id == entity_id)
@@ -129,7 +128,7 @@ class BaseRepository(Generic[ModelType], ABC):
         """여러 엔티티 일괄 업데이트
         
         Args:
-            updates: [{"id": UUID, "field1": value1, "field2": value2}, ...]
+            updates: [{"id": int, "field1": value1, "field2": value2}, ...]
         
         Returns:
             업데이트된 행의 수
