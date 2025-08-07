@@ -5,6 +5,7 @@ from pydantic import BaseModel
 # Request 스키마
 class SaveOnlyRequest(BaseModel):
     """저장만 하기 요청 스키마"""
+    user_id: str
     thumbnail: str
     title: str
     url: str
@@ -19,6 +20,7 @@ class SummarizeRequest(BaseModel):
 
 class SaveWithSummaryRequest(BaseModel):
     """요약과 함께 저장하기 요청 스키마"""
+    user_id: str
     thumbnail: str
     title: str
     url: str

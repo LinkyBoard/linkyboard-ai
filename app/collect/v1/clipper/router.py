@@ -14,13 +14,18 @@ from .service import clipper_service
 router = APIRouter(
     prefix="/api/v1/clipper",
     tags=["clipper"],
-    responses={404: {"description": "Not found"}},
+    responses={
+        400: {"description": "Bad Request"},
+        404: {"description": "Not found"},
+        422: {"description": "Validation Error"},
+        500: {"description": "Internal Server Error"},
+    },
 )
-
 
 # API 엔드포인트 정의
 @router.post("/save-only", response_model=SaveOnlyResponse)
 async def save_only(
+    user_id: str = Form(..., description="사용자 ID"),
     thumbnail: str = Form(..., description="썸네일 이미지 (base64 또는 URL)"),
     title: str = Form(..., description="페이지 제목"),
     url: str = Form(..., description="페이지 URL"),
@@ -83,6 +88,7 @@ async def summarize_content(
 
 @router.post("/save-with-summary", response_model=SaveWithSummaryResponse)
 async def save_with_summary(
+    user_id: str = Form(..., description="사용자 ID"),
     thumbnail: str = Form(..., description="썸네일 이미지 (base64 또는 URL)"),
     title: str = Form(..., description="페이지 제목"),
     url: str = Form(..., description="페이지 URL"),
