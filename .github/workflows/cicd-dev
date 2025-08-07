@@ -1,0 +1,74 @@
+name: CI/CD-DEV
+
+on:
+  push:
+    branches: [ dev ]
+
+env:
+  IMAGE_NAME: wonjun0120/linkyboard-ai   # Docker Hub 레포지토리
+
+jobs:
+# ───────────────────────────── 1) Build & Push ─────────────────────────────
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Build & Push Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+# ───────────────────────────── 2) Deploy ─────────────────────────────
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      # (1) docker-compose.yml을 EC2로 복사
+      - uses: actions/checkout@v4
+
+      - name: Copy compose file to EC2
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "docker-compose.yml"
+          target: "~/linkyboard/"
+
+      # (2) .env 파일 생성 및 docker compose 배포
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/linkyboard
+
+            echo "🔑  .env 갱신"
+            cat > .env <<'EOF'
+            # GitHub Secrets → ENV_FILE (멀티라인) 로드
+            ${{ secrets.ENV_FILE }}
+            EOF
+
+            echo "🐳  이미지 Pull"
+            docker compose pull
+
+            echo "🚀  컨테이너 재시작"
+            docker compose up -d --remove-orphans
