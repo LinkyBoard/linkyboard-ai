@@ -35,45 +35,40 @@ def setup_logging():
     log_dir = Path(settings.LOG_DIR)
     log_dir.mkdir(exist_ok=True)
     
-    # 콘솔 로깅 설정 (항상 활성화)
+    # Docker 환경 감지
+    is_docker = os.path.exists('/.dockerenv')
+    
+    # 콘솔 로깅 설정 (Docker logs를 위해 항상 활성화)
     if settings.DEBUG:
         # 개발 환경 - 상세한 콘솔 로그
         logger.add(
-            sys.stderr,
+            sys.stdout,  # Docker logs를 위해 stdout 사용
             format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | <level>{message}</level>",
             level=settings.LOG_LEVEL,
-            colorize=True,
+            colorize=not is_docker,  # Docker에서는 색상 비활성화
             backtrace=True,
             diagnose=True
         )
     else:
-        # 프로덕션 환경 - 간단한 콘솔 로그 (INFO 이상)
+        # 프로덕션 환경 - 간단한 콘솔 로그
         logger.add(
-            sys.stderr,
-            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
+            sys.stdout,
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
             level="INFO",
-            colorize=True
+            colorize=not is_docker
         )
     
-    # API 요청 전용 콘솔 로깅 (색상으로 구분)
-    logger.add(
-        sys.stderr,
-        format="<blue>{time:HH:mm:ss}</blue> | <yellow>API</yellow> | <cyan>{extra[request_id]}</cyan> | <magenta>{extra[method]}</magenta> <white>{extra[url]}</white> | <green>{extra[status_code]}</green> | <yellow>{extra[duration]}ms</yellow> | {message}",
-        level="INFO",
-        colorize=True,
-        filter=lambda record: "api" in record["extra"] and record["extra"].get("log_type") == "request_end"
-    )
+    # API 요청 전용 콘솔 로깅
+    if not is_docker:  # 로컬 개발환경에서만 색상 로그
+        logger.add(
+            sys.stdout,
+            format="<blue>{time:HH:mm:ss}</blue> | <yellow>API</yellow> | <cyan>{extra[request_id]}</cyan> | <magenta>{extra[method]}</magenta> <white>{extra[url]}</white> | <green>{extra[status_code]}</green> | <yellow>{extra[duration]}ms</yellow> | {message}",
+            level="INFO",
+            colorize=True,
+            filter=lambda record: "api" in record["extra"] and record["extra"].get("log_type") == "request_end"
+        )
     
-    # API 에러 전용 콘솔 로깅
-    logger.add(
-        sys.stderr,
-        format="<blue>{time:HH:mm:ss}</blue> | <red>API ERROR</red> | <cyan>{extra[request_id]}</cyan> | <magenta>{extra[method]}</magenta> <white>{extra[url]}</white> | <red>{extra[status_code]}</red> | <yellow>{extra[duration]}ms</yellow> | <red>{message}</red>",
-        level="ERROR",
-        colorize=True,
-        filter=lambda record: "api" in record["extra"] and record["extra"].get("log_type") == "request_error"
-    )
-    
-    # 파일 로깅 설정
+    # 파일 로깅 설정 (항상 활성화)
     # 일반 로그
     logger.add(
         log_dir / "app.log",
@@ -100,7 +95,7 @@ def setup_logging():
         diagnose=True
     )
     
-    # API 접근 로그 (커스텀 포맷터 사용)
+    # API 접근 로그
     logger.add(
         log_dir / "api.log",
         format=api_formatter,
@@ -135,6 +130,11 @@ def setup_logging():
         enqueue=True,
         filter=lambda record: "ai" in record["extra"]
     )
+    
+    # Docker 환경에서의 추가 정보 로깅
+    if is_docker:
+        logger.info("🐳 Running in Docker environment")
+        logger.info(f"📂 Log directory: {log_dir}")
     
     return logger
 

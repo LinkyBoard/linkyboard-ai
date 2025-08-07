@@ -12,4 +12,7 @@ services:
       - ./.env           # EC2 호스트에만 두고 Git‧이미지에 포함 X
     ports:
       - "80:80"          # 호스트 80 → 컨테이너 80
+    volumes:
+      - ./logs:/app/logs  
+      - ./.env:/app/.env
     restart: always
