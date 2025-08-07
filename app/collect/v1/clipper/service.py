@@ -3,8 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func
 
 from app.ai.openai_service import openai_service
-from app.core.repository import ItemRepository, UserRepository
+from app.core.repository import ItemRepository
 from app.core.logging import get_logger
+from app.user.user_repository import UserRepository
 from .schemas import (
     WebpageSyncRequest,
     SummarizeRequest,

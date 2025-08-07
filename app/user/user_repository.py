@@ -4,7 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.sql import func
 
 from app.core.models import User
-from .base import BaseRepository
+from app.core.repository.base import BaseRepository
+
 
 
 class UserRepository(BaseRepository[User]):

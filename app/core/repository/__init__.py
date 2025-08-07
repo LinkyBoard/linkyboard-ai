@@ -13,10 +13,8 @@ Usage:
 
 from .base import BaseRepository
 from .item_repository import ItemRepository, item_repository
-from .user_repository import UserRepository, user_repository
 
 __all__ = [
     "BaseRepository",
-    "ItemRepository", "item_repository",
-    "UserRepository", "user_repository"
+    "ItemRepository", "item_repository"
 ]

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.collect.v1.clipper.router import router as clipper_router
+from app.user.v1.router import router as user_router
 from app.core.middleware import LoggingMiddleware, ErrorHandlingMiddleware
 from app.core.logging import log
 
@@ -16,6 +17,9 @@ app.add_middleware(ErrorHandlingMiddleware)
 
 # Clipper
 app.include_router(clipper_router)
+
+# User
+app.include_router(user_router)
 
 @app.get("/")
 def read_root():
