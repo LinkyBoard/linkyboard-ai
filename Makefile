@@ -37,3 +37,12 @@ up-compose:
 .PHONY: down-compose
 down-compose:
 	docker-compose down	
+
+# alembic
+.PHONY: upgrade
+upgrade:
+	alembic upgrade head
+
+.PHONY: downgrade
+downgrade:
+	alembic downgrade -1

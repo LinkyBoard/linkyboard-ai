@@ -226,3 +226,19 @@ pyrightconfig.json
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,python,visualstudiocode
+
+# Alembic 설정 파일 중 민감한 정보가 포함된 경우 (선택사항)
+# alembic.ini
+
+# 데이터베이스 파일들 (SQLite 사용시)
+*.db
+*.sqlite
+*.sqlite3
+
+# 데이터베이스 덤프 파일들
+*.sql
+*.dump
+
+# 로컬 테스트용 데이터베이스 설정 파일 (만약 있다면)
+# local_alembic.ini
+# test_alembic.ini
