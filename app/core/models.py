@@ -37,6 +37,101 @@ class User(Base):
         return f"<User(id={self.id}, active={self.is_active})>"
 
 
+class Category(Base):
+    """카테고리 테이블 - 벡터 임베딩 포함"""
+    __tablename__ = "categories"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="카테고리 ID")
+    name = Column(String(100), unique=True, nullable=False, comment="카테고리명")
+    # description = Column(Text, nullable=True, comment="카테고리 설명")
+    embedding = Column(Vector(1536), nullable=True, comment="카테고리 임베딩 벡터")
+    
+    # 메타데이터
+    frequency_count = Column(Integer, default=0, comment="사용 빈도")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    
+    # 관계 설정
+    items = relationship("Item", back_populates="category_ref")
+    
+    __table_args__ = (
+        Index('ix_categories_name', 'name'),
+        Index('ix_categories_frequency', 'frequency_count'),
+    )
+
+
+class Tag(Base):
+    """태그 테이블 - 벡터 임베딩 포함"""
+    __tablename__ = "tags"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="태그 ID")
+    name = Column(String(255), unique=True, nullable=False, comment="태그명")
+    embedding = Column(Vector(1536), nullable=True, comment="태그 임베딩 벡터")
+
+    # 통계 정보
+    frequency_global = Column(Integer, default=0, comment="전체 사용 빈도")
+    user_count = Column(Integer, default=0, comment="사용한 사용자 수")
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    
+    __table_args__ = (
+        Index('ix_tags_name', 'name'),
+        Index('ix_tags_frequency', 'frequency_global'),
+    )
+
+
+class ItemTags(Base):
+    """아이템-태그 연결 테이블"""
+    __tablename__ = "item_tags"
+
+    # NOTE : 유저 아이디 추가 고려
+    item_id = Column(Integer, ForeignKey("items.id", ondelete="CASCADE"), primary_key=True)
+    tag_id = Column(Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
+    relevance_score = Column(Float, default=1.0, comment="관련도 점수 (0.0-1.0)")
+    source = Column(String(20), default="ai", comment="출처: ai, user, system")
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    # 관계 설정
+    item = relationship("Item")
+    tag = relationship("Tag")
+
+
+class UserCategoryPreference(Base):
+    """사용자 카테고리 선호도 테이블"""
+    __tablename__ = "user_category_preferences"
+    
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    category_id = Column(Integer, ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True)
+    
+    frequency_count = Column(Integer, default=1, comment="사용 빈도")
+    preference_score = Column(Float, default=1.0, comment="선호도 점수")
+    last_used = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    # 관계 설정
+    user = relationship("User")
+    category = relationship("Category")
+
+
+class UserTagInteraction(Base):
+    """사용자 태그 상호작용 테이블"""
+    __tablename__ = "user_tag_interactions"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    tag_id = Column(Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
+
+    interaction_count = Column(Integer, default=1, comment="상호작용 횟수")
+    preference_score = Column(Float, default=1.0, comment="선호도 점수")
+    last_interaction = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    context_category_id = Column(Integer, ForeignKey("categories.id"), nullable=True, comment="상호작용 맥락 카테고리")
+    
+    # 관계 설정
+    user = relationship("User")
+    tag = relationship("Tag")
+    context_category = relationship("Category")
+
+
 class Item(Base):
     """아이템 테이블 - 다양한 타입의 콘텐츠를 저장 (웹페이지, PDF, 유튜브, 이미지 등)"""
     __tablename__ = "items"
@@ -67,7 +162,6 @@ class Item(Base):
     thumbnail = Column(Text, nullable=True, comment="썸네일 이미지 (base64 또는 URL)")
     description = Column(Text, nullable=True, comment="설명 또는 요약")
     summary = Column(Text, nullable=True, comment="요약")
-    category = Column(String(100), nullable=True, comment="카테고리")
     memo = Column(Text, nullable=True, comment="사용자 메모")
     
     # 원본 콘텐츠 저장 (타입별로 다름)
@@ -76,11 +170,15 @@ class Item(Base):
     
     # 벡터 임베딩 (pgvector) - 의미 검색용
     embedding_chunks = relationship("ItemEmbeddingMetadata", back_populates="item", cascade="all, delete-orphan")
+
+    # 카테고리 관계를 외래키로 변경
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True, comment="카테고리 ID")
+    category = Column(String(100), nullable=True, comment="카테고리명 (캐시용)")
     
-    # 태그 정보 (JSON으로 저장) ✨ 핵심 변경
-    # user_tags = Column(JSON, nullable=True, comment="사용자 생성 태그 배열 ['tag1', 'tag2']")
-    # ai_tags = Column(JSON, nullable=True, comment="AI 생성 태그 객체 [{'tag': 'keyword1', 'confidence': 0.9}]")
-    tags = Column(JSON, nullable=True, comment="아이템 태그 (JSON 형태로 저장)")
+    # 관계 추가
+    category_ref = relationship("Category", back_populates="items")
+    tags = relationship("ItemTag", back_populates="item")
+
 
     # 처리 상태 관리
     processing_status = Column(
@@ -202,72 +300,6 @@ class ItemEmbeddingMetadata(Base):
         if total_chunks < 1:
             raise ValueError("total_chunks must be >= 1")
         return total_chunks
-    
-
-# TODO: AI 태그와 사용자 태그를 별도의 테이블로 분리하는 방안 검토
-# 현재는 Item 모델에 JSON 형태로 저장되어 있지만, 별도의 ItemTag 모델로 분리하여 관리하는 것이 더 효율적일 수 있음
-
-# class ItemTag(Base):
-#     """아이템 태그 테이블 - AI 키워드 + 사용자 태그 통합 관리"""
-#     __tablename__ = "item_tags"
-
-#     id = Column(Integer, primary_key=True, autoincrement=True, comment="아이템 태그 ID")
-#     item_id = Column(
-#         Integer, 
-#         ForeignKey("items.id", ondelete="CASCADE"), 
-#         nullable=False, 
-#         index=True,
-#         comment="아이템 ID (외래키)"
-#     )
-#     user_id = Column(
-#         Integer, 
-#         ForeignKey("users.id", ondelete="CASCADE"), 
-#         nullable=False, 
-#         index=True,
-#         comment="사용자 ID (검색 성능 향상용)"
-#     )
-#     tag = Column(String(100), nullable=False, comment="태그/키워드명")
-#     tag_type = Column(
-#         String(20), 
-#         nullable=False, 
-#         default="user", 
-#         comment="태그 타입: user(사용자), ai(AI추천), system(시스템)"
-#     )
-#     confidence_score = Column(
-#         Float, 
-#         nullable=True, 
-#         comment="AI 태그의 신뢰도 점수 (0.0-1.0), 사용자 태그는 NULL"
-#     )
-#     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
-
-#     # 관계 설정
-#     item = relationship("Item", back_populates="tags")
-#     user = relationship("User")
-
-#     # 인덱스 추가
-#     __table_args__ = (
-#         Index('ix_item_tags_user_tag', 'user_id', 'tag'),
-#         Index('ix_item_tags_user_type', 'user_id', 'tag_type'),
-#         Index('ix_item_tags_tag', 'tag'),
-#         Index('ix_item_tags_type', 'tag_type'),
-#         Index('ix_item_tags_item_tag', 'item_id', 'tag', unique=True),
-#         Index('ix_item_tags_confidence', 'confidence_score'),
-#         Index('ix_item_tags_type_confidence', 'tag_type', 'confidence_score'),
-#     )
-
-#     def __repr__(self):
-#         confidence_str = f", confidence={self.confidence_score:.2f}" if self.confidence_score else ""
-#         return f"<ItemTag(item_id={self.item_id}, tag='{self.tag}', type='{self.tag_type}'{confidence_str})>"
-
-#     @property
-#     def is_ai_tag(self) -> bool:
-#         """AI 생성 태그인지 확인"""
-#         return self.tag_type == "ai"
-
-#     @property
-#     def is_high_confidence(self) -> bool:
-#         """고신뢰도 AI 태그인지 확인 (0.7 이상)"""
-#         return self.confidence_score is not None and self.confidence_score >= 0.7
 
 
 class SearchHistory(Base):
@@ -291,7 +323,7 @@ class SearchHistory(Base):
         String(20), 
         nullable=False, 
         default="semantic", 
-        comment="검색 타입: semantic(의미검색), keyword(키워드검색), mixed(복합검색)"
+        comment="검색 타입: semantic(의미검색), tag(태그검색), mixed(복합검색)"
     )
     result_count = Column(Integer, nullable=False, default=0, comment="검색 결과 수")
     
