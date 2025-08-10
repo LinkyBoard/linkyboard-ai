@@ -32,3 +32,6 @@ tqdm==4.67.1; python_version >= '3.7'
 typing-extensions==4.14.1; python_version >= '3.9'
 typing-inspection==0.4.1; python_version >= '3.9'
 uvicorn==0.35.0; python_version >= '3.9'
+aiosqlite==0.20.0; python_version >= "3.7"
+pytest==8.3.2; python_version >= "3.8"
+pytest-asyncio==0.24.0; python_version >= "3.8"
