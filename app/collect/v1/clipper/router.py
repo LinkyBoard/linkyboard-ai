@@ -1,4 +1,5 @@
 from typing import Optional
+import time
 from fastapi import APIRouter, BackgroundTasks, HTTPException, File, UploadFile, Form, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
@@ -8,8 +9,12 @@ from .schemas import (
     SummarizeResponse,
     WebpageSyncResponse,
     SummarizeRequest,
+    SummarizeWithRecommendationsRequest,
+    SummarizeWithRecommendationsResponse,
+    UserInteractionRequest,
+    RecommendationData,
 )
-from .service import clipper_service
+from .service import clipper_service, get_clipper_service
 
 logger = get_logger("clipper_router")
 
@@ -108,6 +113,102 @@ async def summarize_webpage(
         return result
         
     except Exception as e:
-        logger.error(f"Failed to summarize webpage for URL {url}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to summarize webpage: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"요약 생성 중 오류가 발생했습니다: {str(e)}")
+
+
+@router.post("/summarize-with-recommendations", response_model=SummarizeWithRecommendationsResponse)
+async def summarize_with_recommendations(
+    request: SummarizeWithRecommendationsRequest,
+    session: AsyncSession = Depends(get_db),
+    clipper_service = Depends(get_clipper_service)
+):
+    """웹페이지 요약 + 사용자 맞춤 태그/카테고리 추천"""
+    try:
+        start_time = time.time()
+        
+        logger.bind(user_id=request.user_id).info(f"Summarizing with recommendations: {request.url}")
+        
+        # 1. 요약 및 추천 생성
+        summary_request = SummarizeRequest(
+            url=request.url,
+            html_content=request.html_content
+        )
+        
+        result = await clipper_service.generate_webpage_summary_with_recommendations(
+            session=session,
+            request_data=summary_request,
+            user_id=request.user_id,
+            tag_count=request.tag_count
+        )
+        
+        # 2. 자동 저장 처리
+        summary_id = None
+        saved = False
+        if request.auto_save and request.item_id and request.title:
+            summary_id = await clipper_service.save_content_with_recommendations(
+                session=session,
+                user_id=request.user_id,
+                item_id=request.item_id,
+                title=request.title,
+                summary=result['summary'],
+                url=request.url,
+                recommended_tags=result['recommended_tags'],
+                recommended_category=result['recommended_category'],
+                html_content=request.html_content
+            )
+            saved = True
+        
+        processing_time = time.time() - start_time
+        
+        # 3. 응답 구성
+        response = SummarizeWithRecommendationsResponse(
+            summary_id=summary_id,
+            summary=result['summary'],
+            url=request.url,
+            recommendations=RecommendationData(
+                recommended_tags=result['recommended_tags'],
+                recommended_category=result['recommended_category'],
+                confidence_score=result['confidence_score'],
+                user_history_tags=result['user_history_tags'],
+                ai_generated_tags=result['ai_generated_tags'],
+                similar_categories=result['similar_categories'],
+                user_preferred_categories=result['user_preferred_categories']
+            ),
+            processing_time=processing_time,
+            saved=saved
+        )
+        
+        logger.bind(user_id=request.user_id).info(f"Successfully processed with recommendations in {processing_time:.2f}s")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Failed to summarize with recommendations: {str(e)}")
+        raise HTTPException(status_code=500, detail="요약 및 추천 생성 중 오류가 발생했습니다.")
+
+
+@router.post("/interaction")
+async def record_user_interaction(
+    request: UserInteractionRequest,
+    session: AsyncSession = Depends(get_db),
+    clipper_service = Depends(get_clipper_service)
+):
+    """사용자 콘텐츠 상호작용 기록"""
+    try:
+        logger.bind(user_id=request.user_id).info(
+            f"Recording interaction: {request.interaction_type} for content {request.content_id}"
+        )
+        
+        await clipper_service.record_user_content_interaction(
+            session=session,
+            user_id=request.user_id,
+            content_id=request.content_id,
+            interaction_type=request.interaction_type
+        )
+        
+        return {"message": "상호작용이 성공적으로 기록되었습니다."}
+        
+    except Exception as e:
+        logger.error(f"Failed to record user interaction: {str(e)}")
+        raise HTTPException(status_code=500, detail="상호작용 기록 중 오류가 발생했습니다.")
 
