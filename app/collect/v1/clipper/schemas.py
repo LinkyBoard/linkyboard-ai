@@ -11,7 +11,7 @@ class WebpageSyncRequest(BaseModel):
     title: str
     url: str
     summary: Optional[str] = None
-    keywords: Optional[list[str]] = None
+    tags: Optional[list[str]] = None
     category: str
     memo: Optional[str] = None
     html_content: str

@@ -40,7 +40,7 @@ async def sync_webpage(
     title: str = Form(..., description="페이지 제목"),
     url: str = Form(..., description="페이지 URL"),
     summary: Optional[str] = Form(None, description="페이지 요약"),
-    keywords: Optional[list[str]] = Form(None, description="키워드 목록"),
+    tags: Optional[list[str]] = Form(None, description="태그 목록"),
     category: str = Form(..., description="카테고리"),
     memo: Optional[str] = Form(None, description="사용자 메모"),
     html_file: UploadFile = File(..., description="HTML 파일"),
@@ -67,7 +67,7 @@ async def sync_webpage(
             title=title,
             url=url,
             summary=summary,
-            keywords=keywords or [],
+            tags=tags or [],
             category=category,
             memo=memo,
             html_content=html_content_str
@@ -89,8 +89,8 @@ async def summarize_webpage(
     html_file: UploadFile = File(..., description="HTML 파일")
 ):
     """
-    웹페이지 요약 생성
-    
+    [Legacy] 웹페이지 요약 생성
+
     클라이언트로부터 페이지 URL과 HTML 파일을 받아서 요약, 키워드, 카테고리를 생성합니다.
     """
     try:

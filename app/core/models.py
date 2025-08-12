@@ -89,7 +89,7 @@ class ItemTags(Base):
     item_id = Column(Integer, ForeignKey("items.id", ondelete="CASCADE"), primary_key=True)
     tag_id = Column(Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
     relevance_score = Column(Float, default=1.0, comment="관련도 점수 (0.0-1.0)")
-    source = Column(String(20), default="ai", comment="출처: ai, user, system")
+    source = Column(String(20), default="ai", comment="출처: ai, user")
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     
@@ -222,15 +222,20 @@ class Item(Base):
         """임베딩이 완료되었는지 확인"""
         return len(self.embedding_chunks) > 0
 
-    # @property
-    # def ai_tags(self):
-    #     """AI 생성 태그만 반환"""
-    #     return [tag for tag in self.tags if tag.tag_type == "ai"]
+    @property
+    def ai_tags(self):
+        """AI 생성 태그만 반환"""
+        return [item_tag.tag for item_tag in self.item_tags if item_tag.source == "ai"]
 
-    # @property
-    # def user_tags(self):
-    #     """사용자 생성 태그만 반환"""
-    #     return [tag for tag in self.tags if tag.tag_type == "user"]
+    @property
+    def user_tags(self):
+        """사용자 생성 태그만 반환"""
+        return [item_tag.tag for item_tag in self.item_tags if item_tag.source == "user"]
+    
+    @property
+    def all_tags(self):
+        """모든 태그 반환"""
+        return [item_tag.tag for item_tag in self.item_tags]
 
 
 class ItemEmbeddingMetadata(Base):

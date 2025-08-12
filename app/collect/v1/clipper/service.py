@@ -1,7 +1,7 @@
 import asyncio
 from typing import Optional, List, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func
+from sqlalchemy import func, select
 from fastapi import BackgroundTasks
 from datetime import datetime
 
@@ -14,6 +14,7 @@ from app.ai.classification.tag_extractor import TagExtractionService
 from app.ai.classification.category_classifier import CategoryClassificationService
 from app.ai.recommendation.vector_service import VectorProcessingService
 from app.ai.recommendation.user_profiling import UserProfilingService
+from app.core.models import Tag, ItemTags, Category
 from .schemas import (
     WebpageSyncRequest,
     SummarizeRequest,
@@ -130,7 +131,6 @@ class ClipperService:
                     summary=request_data.summary,
                     category=request_data.category,
                     memo=request_data.memo,
-                    tags=request_data.keywords or [],
                     processing_status="raw",
                     updated_at=func.now(),
                     is_active=True
@@ -149,10 +149,21 @@ class ClipperService:
                     summary=request_data.summary,
                     category=request_data.category,
                     memo=request_data.memo,
-                    tags=request_data.keywords or [],
                     processing_status="raw",
                     is_active=True
                 )
+
+            # 카테고리 ID 설정
+            if request_data.category:
+                category_id = await self._get_or_create_category_id(session, request_data.category)
+                item.category_id = category_id
+
+            # 키워드를 태그로 처리
+            if request_data.tags:
+                await self._create_item_tags(session, request_data.item_id, request_data.tags)
+                
+            # 변경사항 커밋
+            await session.commit()
 
             # 백그라운드 태스크로 임베딩 처리
             if background_tasks and request_data.html_content:
@@ -328,6 +339,9 @@ class ClipperService:
             # 3. 기존 아이템 업데이트 또는 생성
             user = await self.user_repository.get_or_create(session, user_id=user_id)
             
+            # 카테고리 ID 조회 또는 생성
+            category_id = await self._get_or_create_category_id(session, recommended_category)
+            
             existing_item = await self.item_repository.get_by_id(session, item_id)
             if existing_item:
                 item = await self.item_repository.update(
@@ -338,7 +352,7 @@ class ClipperService:
                     summary=summary,
                     source_url=url,
                     category=recommended_category,
-                    tags=recommended_tags,
+                    category_id=category_id,
                     raw_content=html_content,
                     processing_status="saved",
                     updated_at=func.now()
@@ -353,10 +367,14 @@ class ClipperService:
                     summary=summary,
                     source_url=url,
                     category=recommended_category,
-                    tags=recommended_tags,
+                    category_id=category_id,
                     raw_content=html_content,
                     processing_status="saved"
                 )
+            
+            # 추천된 태그들을 별도로 생성
+            if recommended_tags:
+                await self._create_item_tags_ai(session, item_id, recommended_tags)
             
             # 4. 콘텐츠-키워드 관계 저장
             await self._store_content_keyword_relationships(session, item_id, keyword_ids, recommended_tags)
@@ -366,6 +384,9 @@ class ClipperService:
             
             # 6. 콘텐츠 임베딩 생성
             await vector_service.generate_content_embedding(item_id)
+            
+            # 최종 커밋
+            await session.commit()
             
             logger.bind(user_id=user_id).info(f"Successfully saved content {item_id} with recommendations")
             return item_id
@@ -462,6 +483,7 @@ class ClipperService:
     
     def _calculate_tag_similarity(self, tag1: str, tag2: str) -> float:
         """태그 유사도 계산 (간단한 문자열 기반)"""
+        # TODO : 더 정교한 유사도 계산 로직 필요 (예: Levenshtein 거리, Jaccard 유사도 등)
         tag1_lower = tag1.lower()
         tag2_lower = tag2.lower()
         
@@ -533,10 +555,125 @@ class ClipperService:
                 user_id, category_id, interaction_type
             )
     
+    async def _get_or_create_category_id(self, session: AsyncSession, category_name: str) -> int:
+        """카테고리 조회 또는 생성하고 ID 반환"""
+        if not category_name:
+            logger.warning("Empty category name provided")
+            return None
+            
+        logger.info(f"Getting or creating category: {category_name}")
+        
+        # 기존 카테고리 조회
+        category = await session.execute(
+            select(Category).where(Category.name == category_name)
+        )
+        category = category.scalar_one_or_none()
+        
+        if not category:
+            # 새 카테고리 생성
+            category = Category(name=category_name, frequency_count=1)
+            session.add(category)
+            await session.flush()
+            logger.info(f"Created new category: {category_name} (ID: {category.id})")
+        else:
+            # 빈도 증가
+            category.frequency_count += 1
+            logger.info(f"Updated existing category: {category_name} (ID: {category.id}, frequency: {category.frequency_count})")
+            
+        return category.id
+    
+    async def _create_item_tags(self, session: AsyncSession, item_id: int, keywords: List[str]):
+        """키워드를 태그로 생성하고 아이템과 연결 (사용자 입력)"""
+        logger.info(f"Creating tags for item {item_id}: {keywords}")
+        
+        for keyword in keywords:
+            # 기존 태그 조회 또는 새 태그 생성
+            tag = await session.execute(
+                select(Tag).where(Tag.name == keyword)
+            )
+            tag = tag.scalar_one_or_none()
+            
+            if not tag:
+                tag = Tag(name=keyword, frequency_global=1)
+                session.add(tag)
+                await session.flush()
+                logger.info(f"Created new tag: {keyword} (ID: {tag.id})")
+            else:
+                tag.frequency_global += 1
+                logger.info(f"Updated existing tag: {keyword} (ID: {tag.id}, frequency: {tag.frequency_global})")
+            
+            # ItemTags 관계 생성 (중복 체크)
+            existing_relation = await session.execute(
+                select(ItemTags).where(
+                    ItemTags.item_id == item_id,
+                    ItemTags.tag_id == tag.id
+                )
+            )
+            
+            if not existing_relation.scalar_one_or_none():
+                item_tag = ItemTags(
+                    item_id=item_id,
+                    tag_id=tag.id,
+                    source="user",  # 사용자가 직접 입력한 키워드
+                    relevance_score=1.0
+                )
+                session.add(item_tag)
+                logger.info(f"Created ItemTag relationship: item {item_id} <-> tag {tag.id}")
+            else:
+                logger.info(f"ItemTag relationship already exists: item {item_id} <-> tag {tag.id}")
+        
+        # 태그 변경사항 커밋
+        await session.commit()
+        logger.info(f"Successfully committed tags for item {item_id}")
+    
+    async def _create_item_tags_ai(self, session: AsyncSession, item_id: int, tags: List[str]):
+        """AI 추천 태그를 생성하고 아이템과 연결"""
+        logger.info(f"Creating AI tags for item {item_id}: {tags}")
+        
+        for tag_name in tags:
+            # 기존 태그 조회 또는 새 태그 생성
+            tag = await session.execute(
+                select(Tag).where(Tag.name == tag_name)
+            )
+            tag = tag.scalar_one_or_none()
+            
+            if not tag:
+                tag = Tag(name=tag_name, frequency_global=1)
+                session.add(tag)
+                await session.flush()
+                logger.info(f"Created new AI tag: {tag_name} (ID: {tag.id})")
+            else:
+                tag.frequency_global += 1
+                logger.info(f"Updated existing AI tag: {tag_name} (ID: {tag.id}, frequency: {tag.frequency_global})")
+            
+            # ItemTags 관계 생성 (중복 체크)
+            existing_relation = await session.execute(
+                select(ItemTags).where(
+                    ItemTags.item_id == item_id,
+                    ItemTags.tag_id == tag.id
+                )
+            )
+            
+            if not existing_relation.scalar_one_or_none():
+                item_tag = ItemTags(
+                    item_id=item_id,
+                    tag_id=tag.id,
+                    source="ai",  # AI 추천 태그
+                    relevance_score=0.8  # 기본 관련도 점수
+                )
+                session.add(item_tag)
+                logger.info(f"Created AI ItemTag relationship: item {item_id} <-> tag {tag.id}")
+            else:
+                logger.info(f"AI ItemTag relationship already exists: item {item_id} <-> tag {tag.id}")
+        
+        # 태그 변경사항 커밋
+        await session.commit()
+        logger.info(f"Successfully committed AI tags for item {item_id}")
+    
 # 서비스 인스턴스 생성 (싱글톤 패턴)
 clipper_service = ClipperService()
 
-# 의존성 주입 함수 (기존 패턴 따름)
+# 의존성 주입용 함수
 def get_clipper_service() -> ClipperService:
-    """클리퍼 서비스 의존성"""
+    """ClipperService 인스턴스 반환"""
     return clipper_service
