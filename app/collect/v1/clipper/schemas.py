@@ -27,7 +27,7 @@ class SummarizeWithRecommendationsRequest(BaseModel):
     """추천 기능이 포함된 요약 요청"""
     url: str = Field(..., description="요약할 웹페이지 URL")
     html_content: str = Field(..., description="HTML 콘텐츠")
-    user_id: str = Field(..., description="사용자 ID")
+    user_id: int = Field(..., description="사용자 ID")
     tag_count: int = Field(default=5, ge=1, le=10, description="추천 태그 수")
     auto_save: bool = Field(default=False, description="자동 저장 여부")
     item_id: Optional[int] = Field(None, description="아이템 ID (저장 시 필요)")

@@ -207,7 +207,7 @@ class ClipperService:
         self, 
         session: AsyncSession,
         request_data: SummarizeRequest,
-        user_id: str,
+        user_id: int,
         tag_count: int = 5
     ) -> Dict:
         """
