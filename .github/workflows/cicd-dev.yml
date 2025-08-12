@@ -155,22 +155,14 @@ jobs:
             echo "🐳  이미지 Pull"
             docker compose pull
 
-            echo "🗃  Alembic migrate on EC2 (dev)"
-            # 컨테이너를 백그라운드로 실행한 후 exec로 마이그레이션
-            docker compose up -d
-            
-            # 컨테이너가 준비될 때까지 잠시 대기
-            sleep 10
-            
-            # 실행 중인 컨테이너에서 마이그레이션 실행
-            echo "현재 마이그레이션 상태 확인:"
-            docker exec fastapi alembic current -v || true
-            
-            echo "마이그레이션 실행 중..."
-            docker exec fastapi alembic upgrade head
-            
-            echo "마이그레이션 완료 후 상태 확인:"
-            docker exec fastapi alembic current -v
+            echo "�  기존 컨테이너 중지"
+            docker compose down || true
 
-            echo "🚀  컨테이너 재시작"
-            docker compose restart
+            echo "🗃  Alembic migrate on EC2 (dev)"
+            # 마이그레이션을 위해 임시로 컨테이너 실행
+            docker compose run --rm app alembic current -v || true
+            docker compose run --rm app alembic upgrade head
+            docker compose run --rm app alembic current -v
+
+            echo "🚀  서비스 시작"
+            docker compose up -d --remove-orphans
