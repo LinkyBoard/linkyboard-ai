@@ -60,8 +60,8 @@ jobs:
   build-and-push:
     needs: preflight
     runs-on: ubuntu-latest
-    # 커밋 메시지에 [skip build] 또는 [no build]가 있으면 빌드 건너뛰기
-    if: ${{ !contains(github.event.head_commit.message, '[skip build]') && !contains(github.event.head_commit.message, '[no build]') && !contains(github.event.head_commit.message, '[skip ci]') }}
+    # 커밋 메시지 마지막에 [skip build], [no build], [skip ci]가 있으면 빌드 건너뛰기
+    if: ${{ !endsWith(github.event.head_commit.message, '[skip build]') && !endsWith(github.event.head_commit.message, '[no build]') && !endsWith(github.event.head_commit.message, '[skip ci]') }}
 
     steps:
       - uses: actions/checkout@v4
@@ -107,8 +107,8 @@ jobs:
   deploy:
     needs: [preflight, build-and-push]
     runs-on: ubuntu-latest
-    # 커밋 메시지에 [skip deploy] 또는 [no deploy]가 있으면 배포 건너뛰기
-    if: ${{ !contains(github.event.head_commit.message, '[skip deploy]') && !contains(github.event.head_commit.message, '[no deploy]') && !contains(github.event.head_commit.message, '[skip ci]') }}
+    # 커밋 메시지 마지막에 [skip deploy], [no deploy], [skip ci]가 있으면 배포 건너뛰기
+    if: ${{ !endsWith(github.event.head_commit.message, '[skip deploy]') && !endsWith(github.event.head_commit.message, '[no deploy]') && !endsWith(github.event.head_commit.message, '[skip ci]') }}
 
     steps:
       - uses: actions/checkout@v4
@@ -155,18 +155,22 @@ jobs:
             echo "🐳  이미지 Pull"
             docker compose pull
 
-            # 실패 시 로그를 남기고 즉시 종료
-            export GITHUB_SHA="${{ github.sha }}"
-            MIGRATE_CTN="alembic-migrate-${GITHUB_SHA:0:7}"
-            trap 'echo "❌ Migration failed. Tail logs:"; docker logs "$MIGRATE_CTN" 2>/dev/null | tail -n 200 || true' ERR
-
             echo "🗃  Alembic migrate on EC2 (dev)"
-            # 현재 상태 확인
-            docker compose run --rm app alembic current -v || true
-            # 마이그레이션 실행
-            docker compose run --rm --name "$MIGRATE_CTN" app alembic upgrade head
-            # 마이그레이션 후 상태 확인
-            docker compose run --rm app alembic current -v
+            # 컨테이너를 백그라운드로 실행한 후 exec로 마이그레이션
+            docker compose up -d
+            
+            # 컨테이너가 준비될 때까지 잠시 대기
+            sleep 10
+            
+            # 실행 중인 컨테이너에서 마이그레이션 실행
+            echo "현재 마이그레이션 상태 확인:"
+            docker exec fastapi alembic current -v || true
+            
+            echo "마이그레이션 실행 중..."
+            docker exec fastapi alembic upgrade head
+            
+            echo "마이그레이션 완료 후 상태 확인:"
+            docker exec fastapi alembic current -v
 
             echo "🚀  컨테이너 재시작"
-            docker compose up -d --remove-orphans
+            docker compose restart
