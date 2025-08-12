@@ -159,9 +159,17 @@ jobs:
             cat > .env <<'EOF'
             ${{ secrets.ENV_FILE }}
             EOF
+
+            echo "🧹  Docker 시스템 정리 (디스크 공간 확보)"
+            docker system prune -f || true
+            docker volume prune -f || true
+            docker image prune -f || true
             
             echo "🐳  이미지 Pull"
             docker compose pull
 
-            echo "🚀  컨테이너 재시작"
+            echo "�  기존 컨테이너 중지"
+            docker compose down || true
+
+            echo "🚀  서비스 시작"
             docker compose up -d --remove-orphans
