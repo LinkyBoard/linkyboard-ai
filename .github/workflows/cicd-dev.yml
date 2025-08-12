@@ -151,32 +151,17 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          script_stop: true  # 원격 스크립트 에러 시 즉시 실패 (권장)
           script: |
             set -Eeuo pipefail
-
             cd ~/linkyboard
 
             echo "🔑  .env 업데이트"
             cat > .env <<'EOF'
             ${{ secrets.ENV_FILE }}
             EOF
-
+            
             echo "🐳  이미지 Pull"
             docker compose pull
 
-            echo "�  기존 컨테이너 중지"
-            docker compose down || true
-
-            echo "🗃  Alembic migrate on EC2 (dev)"
-            # 환경변수 길이 문제 완전 해결: 이미지 내장 스크립트 사용
-            echo "� 마이그레이션 실행 (이미지 내장 스크립트)"
-            docker compose run --rm app bash /app/migrate.sh
-
-            echo "🚀  서비스 시작"
+            echo "🚀  컨테이너 재시작"
             docker compose up -d --remove-orphans
-            
-            # 서비스 상태 확인
-            echo "🔍  서비스 상태 확인"
-            sleep 5
-            docker compose ps
