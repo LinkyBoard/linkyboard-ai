@@ -115,7 +115,7 @@ jobs:
 
 # ───────────────────────────── 2) Deploy ─────────────────────────────
   deploy:
-    needs: [preflight, build-and-push]
+    needs: [preflight]
     runs-on: ubuntu-latest
     # 커밋 메시지 마지막에 [skip deploy], [no deploy], [skip ci]가 있으면 배포 건너뛰기
     if: ${{ !endsWith(github.event.head_commit.message, '[skip deploy]') && !endsWith(github.event.head_commit.message, '[no deploy]') && !endsWith(github.event.head_commit.message, '[skip ci]') }}
