@@ -171,18 +171,18 @@ jobs:
             echo "🗃  Alembic migrate on EC2 (dev)"
             # 환경변수 길이 문제 해결: 간단한 bash 스크립트 생성
             cat > run_migration.sh <<'EOF'
-#!/bin/bash
-set -Eeuo pipefail
-cd /app
-echo "📊 현재 마이그레이션 상태:"
-python -m alembic current -v || true
-echo ""
-echo "🔄 마이그레이션 실행:"
-python -m alembic upgrade head
-echo ""
-echo "✅ 마이그레이션 완료 상태:"
-python -m alembic current -v
-EOF
+            #!/bin/bash
+            set -Eeuo pipefail
+            cd /app
+            echo "📊 현재 마이그레이션 상태:"
+            python -m alembic current -v || true
+            echo ""
+            echo "🔄 마이그레이션 실행:"
+            python -m alembic upgrade head
+            echo ""
+            echo "✅ 마이그레이션 완료 상태:"
+            python -m alembic current -v
+            EOF
             
             chmod +x run_migration.sh
             
