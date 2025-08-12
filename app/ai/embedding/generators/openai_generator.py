@@ -4,7 +4,7 @@ from app.ai.embedding.interfaces import EmbeddingGenerator
 from app.core.config import settings
 from app.core.logging import get_logger
 
-logger = get_logger("embedding_generators")
+logger = get_logger(__name__)
 
 
 class OpenAIEmbeddingGenerator(EmbeddingGenerator):

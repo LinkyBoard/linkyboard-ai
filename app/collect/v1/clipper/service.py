@@ -21,7 +21,7 @@ from .schemas import (
     SummarizeResponse,
 )
 
-logger = get_logger("clipper_service")
+logger = get_logger(__name__)
 
 
 class ClipperService:

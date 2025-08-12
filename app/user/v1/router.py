@@ -11,7 +11,7 @@ from .schemas import (
 )
 from .service import user_service
 
-logger = get_logger("user_router")
+logger = get_logger(__name__)
 
 # Router 인스턴스 생성
 router = APIRouter(

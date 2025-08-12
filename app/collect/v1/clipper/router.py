@@ -16,7 +16,7 @@ from .schemas import (
 )
 from .service import clipper_service, get_clipper_service
 
-logger = get_logger("clipper_router")
+logger = get_logger(__name__)
 
 # Router 인스턴스 생성
 router = APIRouter(

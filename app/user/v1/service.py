@@ -10,7 +10,7 @@ from .schemas import (
     UserResponse,
 )
 
-logger = get_logger("user_service")
+logger = get_logger(__name__)
 
 
 class UserService:

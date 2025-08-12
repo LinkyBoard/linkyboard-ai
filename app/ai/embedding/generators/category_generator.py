@@ -2,7 +2,7 @@ from typing import List, Optional
 from app.ai.embedding.generators.openai_generator import OpenAIEmbeddingGenerator
 from app.core.logging import get_logger
 
-logger = get_logger("category_embedding")
+logger = get_logger(__name__)
 
 
 def _preprocess_category(category: str) -> str:

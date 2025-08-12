@@ -3,7 +3,7 @@ from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 from app.core.logging import get_logger
 
-logger = get_logger("user_profiling")
+logger = get_logger(__name__)
 
 
 class UserProfilingService:

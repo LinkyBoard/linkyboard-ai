@@ -4,7 +4,7 @@ from typing import List
 from app.ai.embedding.generators.openai_generator import OpenAIEmbeddingGenerator
 from app.core.logging import get_logger
 
-logger = get_logger("keyword_embedding")
+logger = get_logger(__name__)
 
 
 def _preprocess_keyword(keyword: str) -> str:

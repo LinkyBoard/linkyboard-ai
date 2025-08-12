@@ -6,7 +6,7 @@ from app.core.models import ItemEmbeddingMetadata, Item
 from app.ai.embedding.interfaces import EmbeddingResult
 from app.core.logging import get_logger
 
-logger = get_logger("embedding_repository")
+logger = get_logger(__name__)
 
 
 class EmbeddingRepository:

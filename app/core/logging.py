@@ -150,4 +150,4 @@ def get_logger(name: str = None):
 setup_logging()
 
 # 기본 로거 인스턴스
-log = get_logger("linkyboard-ai")
+log = get_logger(__name__)

@@ -5,7 +5,7 @@ from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUs
 from app.core.config import settings
 from app.core.logging import get_logger
 
-logger = get_logger("tag_extraction")
+logger = get_logger(__name__)
 
 
 class TagExtractionService:

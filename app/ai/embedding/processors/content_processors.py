@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any
 from app.ai.embedding.interfaces import ContentProcessor
 from app.core.logging import get_logger
 
-logger = get_logger("html_processor")
+logger = get_logger(__name__)
 
 
 class HTMLProcessor(ContentProcessor):

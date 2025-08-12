@@ -13,7 +13,7 @@ from .schemas import (
     CategoryRecommendationResponse, ContentRecommendationResponse
 )
 
-logger = get_logger("recommendation_service")
+logger = get_logger(__name__)
 
 
 class RecommendationService:

@@ -16,7 +16,7 @@ from app.ai.embedding.repository import EmbeddingRepository
 from app.core.repository import ItemRepository
 from app.core.logging import get_logger
 
-logger = get_logger("embedding_service")
+logger = get_logger(__name__)
 
 
 class EmbeddingService:

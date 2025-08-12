@@ -3,7 +3,7 @@ from typing import List
 from app.ai.embedding.interfaces import ChunkingStrategy, ChunkData
 from app.core.logging import get_logger
 
-logger = get_logger("chunking_strategies")
+logger = get_logger(__name__)
 
 
 class TokenBasedChunking(ChunkingStrategy):

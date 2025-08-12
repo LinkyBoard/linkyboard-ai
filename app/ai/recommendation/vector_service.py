@@ -4,7 +4,7 @@ from app.core.logging import get_logger
 from app.ai.embedding.generators.keyword_generator import KeywordEmbeddingGenerator
 from app.ai.embedding.generators.category_generator import CategoryEmbeddingGenerator
 
-logger = get_logger("vector_processing")
+logger = get_logger(__name__)
 
 
 class VectorProcessingService:
