@@ -72,14 +72,14 @@ jobs:
       - name: Check for app code changes
         id: changes
         run: |
-          # 문서, CI/CD 관련 파일만 변경된 경우 스킵
-          if git diff --name-only HEAD~1 HEAD | grep -E '\.(md|yml|yaml|txt)$|^\.github/|^docs/' | wc -l > 0 &&
-             ! git diff --name-only HEAD~1 HEAD | grep -E '\.(py|js|ts|json)$|^app/|^src/|Dockerfile|requirements\.txt|Pipfile' | wc -l > 0; then
+          # 문서/CI 관련 파일만 변경된 경우 스킵 (단, docker-compose.yml 등 중요 설정 파일은 제외)
+          if git diff --name-only HEAD~1 HEAD | grep -E '\.(md|txt)$|^\.github/workflows/|^docs/|README' | wc -l > 0 &&
+             ! git diff --name-only HEAD~1 HEAD | grep -E '\.(py|js|ts|json|yml|yaml)$|^app/|^src/|Dockerfile|requirements\.txt|Pipfile|docker-compose' | wc -l > 0; then
             echo "skip=true" >> $GITHUB_OUTPUT
-            echo "⏭️ 문서/CI 파일만 변경됨 - 빌드 건너뛰기"
+            echo "⏭️ 문서 파일만 변경됨 - 빌드 건너뛰기"
           else
             echo "skip=false" >> $GITHUB_OUTPUT
-            echo "🔨 앱 코드 변경 감지 - 빌드 진행"
+            echo "🔨 앱 코드 또는 설정 변경 감지 - 빌드 진행"
           fi
 
       - uses: docker/setup-qemu-action@v3
