@@ -72,9 +72,19 @@ jobs:
       - name: Check for app code changes
         id: changes
         run: |
-          # 문서/CI 관련 파일만 변경된 경우 스킵 (단, docker-compose.yml 등 중요 설정 파일은 제외)
-          if git diff --name-only HEAD~1 HEAD | grep -E '\.(md|txt)$|^\.github/workflows/|^docs/|README' | wc -l > 0 &&
-             ! git diff --name-only HEAD~1 HEAD | grep -E '\.(py|js|ts|json|yml|yaml)$|^app/|^src/|Dockerfile|requirements\.txt|Pipfile|docker-compose' | wc -l > 0; then
+          echo "=== 변경된 파일 목록 ==="
+          git diff --name-only HEAD~1 HEAD || echo "No changes found"
+          
+          echo "=== 문서/CI 파일 확인 ==="
+          DOC_FILES=$(git diff --name-only HEAD~1 HEAD | grep -E '\.(md|txt)$|^\.github/workflows/|^docs/|README' || true)
+          echo "문서/CI 파일: $DOC_FILES"
+          
+          echo "=== 앱 코드/설정 파일 확인 ==="
+          APP_FILES=$(git diff --name-only HEAD~1 HEAD | grep -E '\.(py|js|ts|json|yml|yaml)$|^app/|^src/|Dockerfile|requirements\.txt|Pipfile|docker-compose' || true)
+          echo "앱/설정 파일: $APP_FILES"
+          
+          # 빌드 스킵 조건 확인
+          if [ -n "$DOC_FILES" ] && [ -z "$APP_FILES" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "⏭️ 문서 파일만 변경됨 - 빌드 건너뛰기"
           else
