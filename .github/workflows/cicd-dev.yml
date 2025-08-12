@@ -169,22 +169,28 @@ jobs:
             docker compose down || true
 
             echo "🗃  Alembic migrate on EC2 (dev)"
-            # 환경변수 길이 문제 해결: 임시 컨테이너 시작 후 마이그레이션
-            echo "🔧 마이그레이션용 임시 컨테이너 시작"
-            docker compose up -d --no-deps app
-            sleep 3
+            # 환경변수 길이 문제 해결: 간단한 bash 스크립트 생성
+            cat > run_migration.sh <<'EOF'
+#!/bin/bash
+set -Eeuo pipefail
+cd /app
+echo "📊 현재 마이그레이션 상태:"
+python -m alembic current -v || true
+echo ""
+echo "🔄 마이그레이션 실행:"
+python -m alembic upgrade head
+echo ""
+echo "✅ 마이그레이션 완료 상태:"
+python -m alembic current -v
+EOF
             
-            echo "📊 현재 마이그레이션 상태:"
-            docker compose exec app python -m alembic current -v || true
+            chmod +x run_migration.sh
             
-            echo "🔄 마이그레이션 실행:"
-            docker compose exec app python -m alembic upgrade head
+            echo "🔧 마이그레이션 실행"
+            docker compose run --rm -v "$(pwd)/run_migration.sh:/app/run_migration.sh" app bash /app/run_migration.sh
             
-            echo "✅ 마이그레이션 완료 상태:"
-            docker compose exec app python -m alembic current -v
-            
-            echo "🛑 마이그레이션용 컨테이너 중지"
-            docker compose down
+            echo "🧹 임시 파일 정리"
+            rm -f run_migration.sh
 
             echo "🚀  서비스 시작"
             docker compose up -d --remove-orphans
