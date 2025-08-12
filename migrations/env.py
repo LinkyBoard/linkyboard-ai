@@ -37,7 +37,17 @@ if config.config_file_name is not None:
 # add your model's MetaData object here
 # for 'autogenerate' support
 from app.core.database import Base
-from app.core.models import Item, SearchHistory
+from app.core.models import (
+    User, 
+    Item, 
+    SearchHistory, 
+    Category, 
+    Tag, 
+    ItemTags, 
+    UserCategoryPreference, 
+    UserTagInteraction, 
+    ItemEmbeddingMetadata
+)
 
 target_metadata = Base.metadata
 

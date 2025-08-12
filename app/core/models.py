@@ -94,7 +94,7 @@ class ItemTags(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     
     # 관계 설정
-    item = relationship("Item")
+    item = relationship("Item", back_populates="item_tags")
     tag = relationship("Tag")
 
 
@@ -177,7 +177,7 @@ class Item(Base):
     
     # 관계 추가
     category_ref = relationship("Category", back_populates="items")
-    tags = relationship("ItemTag", back_populates="item")
+    item_tags = relationship("ItemTags", back_populates="item")
 
 
     # 처리 상태 관리
