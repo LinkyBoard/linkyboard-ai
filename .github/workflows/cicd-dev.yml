@@ -169,28 +169,9 @@ jobs:
             docker compose down || true
 
             echo "🗃  Alembic migrate on EC2 (dev)"
-            # 환경변수 길이 문제 해결: 간단한 bash 스크립트 생성
-            cat > run_migration.sh <<'EOF'
-            #!/bin/bash
-            set -Eeuo pipefail
-            cd /app
-            echo "📊 현재 마이그레이션 상태:"
-            python -m alembic current -v || true
-            echo ""
-            echo "🔄 마이그레이션 실행:"
-            python -m alembic upgrade head
-            echo ""
-            echo "✅ 마이그레이션 완료 상태:"
-            python -m alembic current -v
-            EOF
-            
-            chmod +x run_migration.sh
-            
-            echo "🔧 마이그레이션 실행"
-            docker compose run --rm -v "$(pwd)/run_migration.sh:/app/run_migration.sh" app bash /app/run_migration.sh
-            
-            echo "🧹 임시 파일 정리"
-            rm -f run_migration.sh
+            # 환경변수 길이 문제 완전 해결: 이미지 내장 스크립트 사용
+            echo "� 마이그레이션 실행 (이미지 내장 스크립트)"
+            docker compose run --rm app bash /app/migrate.sh
 
             echo "🚀  서비스 시작"
             docker compose up -d --remove-orphans
