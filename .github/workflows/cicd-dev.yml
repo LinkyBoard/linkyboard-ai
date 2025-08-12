@@ -5,11 +5,60 @@ on:
     branches: [ dev ]
 
 env:
-  IMAGE_NAME: wonjun0120/linkyboard-ai   # Docker Hub 레포지토리
+  IMAGE_NAME: wonjun0120/linkyboard-ai
 
 jobs:
+# ───────────────────────────── 0) Preflight: 필수 시크릿 점검 ─────────────────────────────
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 0-1) 필수 GitHub Secrets 누락 시 즉시 실패
+      - name: Fail if required secrets are missing
+        shell: bash
+        run: |
+          set -e
+          req="DOCKER_HUB_USERNAME DOCKER_HUB_TOKEN EC2_HOST EC2_USER EC2_SSH_KEY ENV_FILE"
+          for k in $req; do
+            v="${!k}"
+            if [ -z "$v" ]; then
+              echo "::error title=Missing secret::$k is not set"
+              exit 1
+            fi
+          done
+        env:
+          DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+          DOCKER_HUB_TOKEN:    ${{ secrets.DOCKER_HUB_TOKEN }}
+          EC2_HOST:            ${{ secrets.EC2_HOST }}
+          EC2_USER:            ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY:         ${{ secrets.EC2_SSH_KEY }}
+          ENV_FILE:            ${{ secrets.ENV_FILE }}
+
+      # 0-2) (선택) .env.example이 있으면 ENV_FILE이 모든 키를 포함하는지 검증
+      - name: Validate ENV_FILE covers .env.example (if exists)
+        if: ${{ hashFiles('.env.example') != '' }}
+        shell: bash
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        run: |
+          set -e
+          tmp_env="$(mktemp)"
+          printf "%s\n" "${ENV_FILE}" > "$tmp_env"
+
+          # 주석/빈줄 제거 후 키 비교
+          missing=$(comm -23 \
+            <(grep -v -E '^\s*($|#)' .env.example | cut -d= -f1 | sort -u) \
+            <(grep -v -E '^\s*($|#)' "$tmp_env"    | cut -d= -f1 | sort -u) || true)
+
+          if [ -n "$missing" ]; then
+            echo "::error title=ENV_FILE missing keys::$(echo "$missing" | tr '\n' ' ')"
+            exit 1
+          fi
+
 # ───────────────────────────── 1) Build & Push ─────────────────────────────
   build-and-push:
+    needs: preflight
     runs-on: ubuntu-latest
 
     steps:
@@ -34,13 +83,24 @@ jobs:
 
 # ───────────────────────────── 2) Deploy ─────────────────────────────
   deploy:
-    needs: build-and-push
+    needs: [preflight, build-and-push]
     runs-on: ubuntu-latest
 
     steps:
-      # (1) docker-compose.yml을 EC2로 복사
       - uses: actions/checkout@v4
 
+      # 2-0) 배포 전에 ENV_FILE이 비어있지 않은지 1번 더 점검(이중 안전장치)
+      - name: Assert ENV_FILE not empty
+        shell: bash
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        run: |
+          if [ -z "${ENV_FILE}" ]; then
+            echo "::error title=ENV_FILE empty::secrets.ENV_FILE is empty"
+            exit 1
+          fi
+
+      # 2-1) docker-compose.yml 전송
       - name: Copy compose file to EC2
         uses: appleboy/scp-action@v1.0.0
         with:
@@ -50,7 +110,7 @@ jobs:
           source: "docker-compose.yml"
           target: "~/linkyboard/"
 
-      # (2) .env 파일 생성 및 docker compose 배포
+      # 2-2) 원격 배포
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -58,14 +118,19 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            set -e
+            set -Eeuo pipefail
             cd ~/linkyboard
 
-            echo "🔑  .env 갱신"
+            echo "🔑  .env 업데이트"
             cat > .env <<'EOF'
-            # GitHub Secrets → ENV_FILE (멀티라인) 로드
             ${{ secrets.ENV_FILE }}
             EOF
+
+            # (옵션) docker-compose level에서도 필수 변수 강제: ${VAR?message}
+            # docker-compose.yml 환경변수에 아래와 같이 정의해두면 빈 값일 때 compose가 실패합니다.
+            # environment:
+            #   SECRET_KEY:   ${SECRET_KEY?You must set SECRET_KEY}
+            #   DATABASE_URL: ${DATABASE_URL?required}
 
             echo "🐳  이미지 Pull"
             docker compose pull
