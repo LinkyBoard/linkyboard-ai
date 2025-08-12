@@ -115,10 +115,10 @@ jobs:
 
 # ───────────────────────────── 2) Deploy ─────────────────────────────
   deploy:
-    needs: [preflight]
+    needs: [preflight, build-and-push]
     runs-on: ubuntu-latest
-    # 커밋 메시지 마지막에 [skip deploy], [no deploy], [skip ci]가 있으면 배포 건너뛰기
-    if: ${{ !endsWith(github.event.head_commit.message, '[skip deploy]') && !endsWith(github.event.head_commit.message, '[no deploy]') && !endsWith(github.event.head_commit.message, '[skip ci]') }}
+    # build-and-push가 성공하면 기다린 후 실행, 스킵되면 바로 실행
+    if: ${{ always() && needs.preflight.result == 'success' && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') && !endsWith(github.event.head_commit.message, '[skip deploy]') && !endsWith(github.event.head_commit.message, '[no deploy]') && !endsWith(github.event.head_commit.message, '[skip ci]') }}
 
     steps:
       - uses: actions/checkout@v4
@@ -169,31 +169,15 @@ jobs:
             docker compose down || true
 
             echo "🗃  Alembic migrate on EC2 (dev)"
-            # 마이그레이션용 스크립트 파일 생성 (환경변수 문제 해결)
-            echo '#!/bin/bash' > migrate.sh
-            echo 'set -e' >> migrate.sh
-            echo 'echo "현재 마이그레이션 상태:"' >> migrate.sh
-            echo 'alembic current -v || true' >> migrate.sh
-            echo 'echo "마이그레이션 실행 중..."' >> migrate.sh
-            echo 'alembic upgrade head' >> migrate.sh
-            echo 'echo "마이그레이션 완료 후 상태:"' >> migrate.sh
-            echo 'alembic current -v' >> migrate.sh
+            # 환경변수 길이 문제를 피하기 위해 직접 alembic 명령 실행
+            echo "📊 현재 마이그레이션 상태 확인:"
+            docker compose run --rm --no-deps app alembic current -v || true
             
-            chmod +x migrate.sh
+            echo "🔄 마이그레이션 실행 중..."
+            docker compose run --rm --no-deps app alembic upgrade head
             
-            # 마이그레이션 실행 (스크립트 파일 사용)
-            echo "▶️  마이그레이션 스크립트 실행"
-            if docker compose run --rm -v $(pwd)/migrate.sh:/app/migrate.sh app /app/migrate.sh; then
-                echo "✅ 마이그레이션 성공"
-            else
-                echo "❌ 마이그레이션 실패"
-                # 마이그레이션 실패 시 로그 확인
-                docker compose logs app --tail 50 || true
-                exit 1
-            fi
-            
-            # 임시 스크립트 정리
-            rm migrate.sh
+            echo "✅ 마이그레이션 완료 후 상태 확인:"
+            docker compose run --rm --no-deps app alembic current -v
 
             echo "🚀  서비스 시작"
             docker compose up -d --remove-orphans
