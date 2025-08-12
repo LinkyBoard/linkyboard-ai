@@ -117,8 +117,10 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true  # 원격 스크립트 에러 시 즉시 실패 (권장)
           script: |
             set -Eeuo pipefail
+
             cd ~/linkyboard
 
             echo "🔑  .env 업데이트"
@@ -126,14 +128,24 @@ jobs:
             ${{ secrets.ENV_FILE }}
             EOF
 
-            # (옵션) docker-compose level에서도 필수 변수 강제: ${VAR?message}
-            # docker-compose.yml 환경변수에 아래와 같이 정의해두면 빈 값일 때 compose가 실패합니다.
-            # environment:
-            #   SECRET_KEY:   ${SECRET_KEY?You must set SECRET_KEY}
-            #   DATABASE_URL: ${DATABASE_URL?required}
-
             echo "🐳  이미지 Pull"
             docker compose pull
+
+            # 실패 시 로그를 남기고 즉시 종료
+            export GITHUB_SHA="${{ github.sha }}"
+            MIGRATE_CTN="alembic-migrate-${GITHUB_SHA:0:7}"
+            trap 'echo "❌ Migration failed. Tail logs:"; docker logs "$MIGRATE_CTN" 2>/dev/null | tail -n 200 || true' ERR
+
+            echo "🗃  Alembic migrate on EC2 (dev)"
+            # 컨테이너 안에서 마이그레이션: 실패하면 non-zero로 종료되어 CI가 실패함
+            docker compose run --rm --name "$MIGRATE_CTN" backend sh -lc '
+              set -e
+              alembic heads
+              alembic current -v || true
+              # (선택) 락/타임아웃 방어: env.py에서 SET lock_timeout/statement_timeout 수행하도록 설정하면 좋습니다.
+              alembic upgrade head
+              alembic current -v
+            '
 
             echo "🚀  컨테이너 재시작"
             docker compose up -d --remove-orphans
