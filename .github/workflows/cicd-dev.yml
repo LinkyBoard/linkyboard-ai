@@ -169,10 +169,36 @@ jobs:
             docker compose down || true
 
             echo "🗃  Alembic migrate on EC2 (dev)"
-            # 마이그레이션을 위해 임시로 컨테이너 실행
-            docker compose run --rm app alembic current -v || true
-            docker compose run --rm app alembic upgrade head
-            docker compose run --rm app alembic current -v
+            # 마이그레이션용 스크립트 파일 생성 (환경변수 문제 해결)
+            echo '#!/bin/bash' > migrate.sh
+            echo 'set -e' >> migrate.sh
+            echo 'echo "현재 마이그레이션 상태:"' >> migrate.sh
+            echo 'alembic current -v || true' >> migrate.sh
+            echo 'echo "마이그레이션 실행 중..."' >> migrate.sh
+            echo 'alembic upgrade head' >> migrate.sh
+            echo 'echo "마이그레이션 완료 후 상태:"' >> migrate.sh
+            echo 'alembic current -v' >> migrate.sh
+            
+            chmod +x migrate.sh
+            
+            # 마이그레이션 실행 (스크립트 파일 사용)
+            echo "▶️  마이그레이션 스크립트 실행"
+            if docker compose run --rm -v $(pwd)/migrate.sh:/app/migrate.sh app /app/migrate.sh; then
+                echo "✅ 마이그레이션 성공"
+            else
+                echo "❌ 마이그레이션 실패"
+                # 마이그레이션 실패 시 로그 확인
+                docker compose logs app --tail 50 || true
+                exit 1
+            fi
+            
+            # 임시 스크립트 정리
+            rm migrate.sh
 
             echo "🚀  서비스 시작"
             docker compose up -d --remove-orphans
+            
+            # 서비스 상태 확인
+            echo "🔍  서비스 상태 확인"
+            sleep 5
+            docker compose ps
