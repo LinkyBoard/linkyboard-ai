@@ -4,12 +4,8 @@ from app.recommendation.v1.service import RecommendationService, get_recommendat
 from app.recommendation.v1.schemas import (
     ContentRecommendationRequest,
     SimilarContentRequest,
-    TagRecommendationRequest,
-    CategoryRecommendationRequest,
     RecommendationFeedback,
-    ContentRecommendationResponse,
-    TagRecommendationResponse,
-    CategoryRecommendationResponse
+    ContentRecommendationResponse
 )
 from app.core.logging import get_logger
 
@@ -68,51 +64,6 @@ async def get_similar_content(
     except Exception as e:
         logger.error(f"Failed to get similar content for {content_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="유사 콘텐츠 추천 중 오류가 발생했습니다.")
-
-
-# NOTE: 삭제 예정
-@router.post("/tags", response_model=TagRecommendationResponse)
-async def recommend_tags(
-    request: TagRecommendationRequest,
-    service: RecommendationService = Depends(get_recommendation_service)
-):
-    """태그 추천"""
-    try:
-        logger.bind(user_id=request.user_id).info("Tag recommendation request")
-        
-        recommendations = await service.recommend_tags_for_content(
-            user_id=request.user_id,
-            content_summary=request.content_summary,
-            tag_count=request.tag_count
-        )
-        
-        return recommendations
-        
-    except Exception as e:
-        logger.error(f"Failed to recommend tags for user {request.user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="태그 추천 중 오류가 발생했습니다.")
-
-
-# NOTE: 삭제 예정
-@router.post("/category", response_model=CategoryRecommendationResponse)
-async def recommend_category(
-    request: CategoryRecommendationRequest,
-    service: RecommendationService = Depends(get_recommendation_service)
-):
-    """카테고리 추천"""
-    try:
-        logger.bind(user_id=request.user_id).info("Category recommendation request")
-        
-        recommendation = await service.recommend_category_for_content(
-            user_id=request.user_id,
-            content_summary=request.content_summary
-        )
-        
-        return recommendation
-        
-    except Exception as e:
-        logger.error(f"Failed to recommend category for user {request.user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="카테고리 추천 중 오류가 발생했습니다.")
 
 
 @router.post("/feedback")

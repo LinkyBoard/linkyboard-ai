@@ -19,19 +19,6 @@ class SimilarContentRequest(BaseModel):
     user_id: Optional[str] = Field(None, description="사용자 ID (개인화용)")
 
 
-class TagRecommendationRequest(BaseModel):
-    """태그 추천 요청"""
-    user_id: str = Field(..., description="사용자 ID")
-    content_summary: str = Field(..., description="콘텐츠 요약")
-    tag_count: int = Field(default=5, ge=1, le=10, description="추천 태그 수")
-
-
-class CategoryRecommendationRequest(BaseModel):
-    """카테고리 추천 요청"""
-    user_id: str = Field(..., description="사용자 ID")
-    content_summary: str = Field(..., description="콘텐츠 요약")
-
-
 class RecommendationFeedback(BaseModel):
     """추천 피드백"""
     user_id: str = Field(..., description="사용자 ID")
@@ -51,20 +38,6 @@ class RecommendedContent(BaseModel):
     similarity_score: float
     recommendation_reason: str
     created_at: datetime
-
-
-class TagRecommendationResponse(BaseModel):
-    """태그 추천 응답"""
-    recommended_tags: List[str] = Field(..., description="추천된 태그들")
-    user_history_tags: List[str] = Field(..., description="사용자 이력 기반 태그들")
-    ai_generated_tags: List[str] = Field(..., description="AI 생성 태그들")
-
-
-class CategoryRecommendationResponse(BaseModel):
-    """카테고리 추천 응답"""
-    recommended_category: str = Field(..., description="추천된 카테고리")
-    similar_categories: List[str] = Field(..., description="유사 카테고리들")
-    confidence_score: float = Field(..., ge=0.0, le=1.0, description="추천 신뢰도")
 
 
 class ContentRecommendationResponse(BaseModel):

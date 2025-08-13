@@ -9,8 +9,8 @@ from app.ai.recommendation.content_scoring import ContentScoringService
 from app.ai.classification.tag_extractor import TagExtractionService
 from app.ai.classification.category_classifier import CategoryClassificationService
 from .schemas import (
-    RecommendedContent, TagRecommendationResponse, 
-    CategoryRecommendationResponse, ContentRecommendationResponse
+    RecommendedContent, 
+    ContentRecommendationResponse
 )
 
 logger = get_logger(__name__)
@@ -165,93 +165,6 @@ class RecommendationService:
                 user_preferences=None
             )
     
-    async def recommend_tags_for_content(
-        self, 
-        user_id: str, 
-        content_summary: str, 
-        tag_count: int = 5
-    ) -> TagRecommendationResponse:
-        """콘텐츠 요약 기반 태그 추천"""
-        try:
-            logger.bind(user_id=user_id).info("Generating tag recommendations")
-            
-            # 1. 사용자 이력 기반 태그 조회
-            user_history_tags = await self._get_user_frequent_tags(user_id, limit=20)
-            user_tag_names = [tag['keyword'] for tag in user_history_tags]
-            
-            # 2. AI 기반 태그 생성
-            ai_generated_tags = await self.tag_extractor.extract_tags_from_summary(
-                summary=content_summary,
-                similar_tags=user_tag_names,
-                tag_count=tag_count
-            )
-            
-            # 3. 사용자 이력과 AI 생성 태그 결합
-            recommended_tags = self._merge_and_rank_tags(
-                user_tag_names[:tag_count//2], 
-                ai_generated_tags,
-                target_count=tag_count
-            )
-            
-            logger.bind(user_id=user_id).info(f"Generated {len(recommended_tags)} tag recommendations")
-            
-            return TagRecommendationResponse(
-                recommended_tags=recommended_tags,
-                user_history_tags=user_tag_names[:5],
-                ai_generated_tags=ai_generated_tags
-            )
-            
-        except Exception as e:
-            logger.error(f"Failed to recommend tags for user {user_id}: {str(e)}")
-            return TagRecommendationResponse(
-                recommended_tags=[],
-                user_history_tags=[],
-                ai_generated_tags=[]
-            )
-    
-    async def recommend_category_for_content(
-        self, 
-        user_id: str, 
-        content_summary: str
-    ) -> CategoryRecommendationResponse:
-        """콘텐츠 요약 기반 카테고리 추천"""
-        try:
-            logger.bind(user_id=user_id).info("Generating category recommendation")
-            
-            # 1. 사용자 선호 카테고리 조회
-            user_categories = await self.user_profiling.get_user_top_categories(user_id, limit=10)
-            user_category_names = [cat['name'] for cat in user_categories]
-            
-            # 2. AI 기반 카테고리 분류
-            recommended_category = await self.category_classifier.classify_category_from_summary(
-                summary=content_summary,
-                similar_categories=user_category_names
-            )
-            
-            # 3. 유사 카테고리 찾기
-            similar_categories = await self.vector_service.find_similar_categories(
-                recommended_category, limit=5
-            )
-            similar_category_names = [cat['name'] for cat in similar_categories]
-            
-            # 4. 신뢰도 점수 계산 (간단한 구현)
-            confidence_score = 0.8 if recommended_category in user_category_names else 0.6
-            
-            logger.bind(user_id=user_id).info(f"Recommended category: {recommended_category}")
-            
-            return CategoryRecommendationResponse(
-                recommended_category=recommended_category,
-                similar_categories=similar_category_names,
-                confidence_score=confidence_score
-            )
-            
-        except Exception as e:
-            logger.error(f"Failed to recommend category for user {user_id}: {str(e)}")
-            return CategoryRecommendationResponse(
-                recommended_category="일반",
-                similar_categories=[],
-                confidence_score=0.5
-            )
     
     async def record_recommendation_feedback(
         self, 
