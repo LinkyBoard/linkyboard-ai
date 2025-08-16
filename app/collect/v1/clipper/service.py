@@ -215,7 +215,7 @@ class ClipperService:
             raise Exception(f"요약 생성 중 오류가 발생했습니다: {str(e)}")
     
     async def generate_webpage_summary_with_recommendations(
-        self, 
+        self,
         session: AsyncSession,
         request_data: SummarizeRequest,
         user_id: int,
@@ -224,53 +224,53 @@ class ClipperService:
         """
         사용자 맞춤 추천이 포함된 웹페이지 요약 생성
         """
+        logger.bind(user_id=user_id).info(f"Generating summary with recommendations for URL: {request_data.url}")
+
+        # 1. 기본 요약 생성 (항상 먼저 실행)
+        summary = await self.openai_service.generate_webpage_summary(
+            url=request_data.url,
+            html_content=request_data.html_content
+        )
+
         try:
-            logger.bind(user_id=user_id).info(f"Generating summary with recommendations for URL: {request_data.url}")
-            
             # DB 연결이 필요한 서비스들 초기화
             vector_service = VectorProcessingService(session)
             user_profiling = UserProfilingService(session)
-            
-            # 1. 기본 요약 생성
-            summary = await self.openai_service.generate_webpage_summary(
-                url=request_data.url,
-                html_content=request_data.html_content
-            )
-            
+
             # 2. 사용자 선호도 기반 태그 추천
             user_keywords = await user_profiling.get_user_top_keywords(user_id, limit=15)
             user_tag_names = [kw['keyword'] for kw in user_keywords]
-            
+
             # AI 기반 태그 생성 (사용자 이력 고려)
             ai_generated_tags = await self.tag_extractor.extract_tags_from_summary(
                 summary=summary,
                 similar_tags=user_tag_names,
                 tag_count=tag_count
             )
-            
+
             # 사용자 선호도 기반 태그 순위화
             recommended_tags = self._rank_tags_by_user_preference(
                 ai_generated_tags, user_tag_names, tag_count
             )
-            
+
             # 3. 사용자 선호도 기반 카테고리 추천
             user_categories = await user_profiling.get_user_top_categories(user_id, limit=10)
             user_category_names = [cat['name'] for cat in user_categories]
-            
+
             recommended_category = await self.category_classifier.classify_category_from_summary(
                 summary=summary,
                 similar_categories=user_category_names
             )
-            
+
             # 신뢰도 계산
             confidence_score = 0.8 if recommended_category in user_category_names else 0.6
-            
+
             # 4. 유사 카테고리 조회
             similar_categories = await vector_service.find_similar_categories(
                 recommended_category, limit=3
             )
             similar_category_names = [cat['name'] for cat in similar_categories]
-            
+
             result = {
                 "summary": summary,
                 "recommended_tags": recommended_tags,
@@ -281,23 +281,20 @@ class ClipperService:
                 "similar_categories": similar_category_names,
                 "user_preferred_categories": user_category_names[:5]
             }
-            
+
             logger.bind(user_id=user_id).info(f"Summary with recommendations completed for URL: {request_data.url}")
             return result
-            
+
         except Exception as e:
             logger.error(f"Failed to generate summary with recommendations for URL {request_data.url}: {str(e)}")
-            # 폴백: 기본 요약만 반환
+            # 폴백: 기본 요약, 태그, 카테고리 생성
             try:
-                summary = await self.openai_service.generate_webpage_summary(
-                    url=request_data.url,
-                    html_content=request_data.html_content
-                )
+                logger.info(f"Fallback: Generating basic tags and category for URL {request_data.url}")
                 tags = await self.openai_service.generate_webpage_tags(summary=summary)
                 category = await self.openai_service.recommend_webpage_category(summary=summary)
-                
+
                 return {
-                    "summary": summary,
+                    "summary": summary,  # 이미 생성된 요약 사용
                     "recommended_tags": tags,
                     "recommended_category": category,
                     "confidence_score": 0.5,

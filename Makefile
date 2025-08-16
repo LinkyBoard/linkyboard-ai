@@ -116,3 +116,22 @@ history-prod:
 	export DATABASE_URL="postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@$${POSTGRES_HOST}:$${POSTGRES_PORT}/prod" && \
 	echo "✅ Connecting to: $${POSTGRES_HOST}:$${POSTGRES_PORT}/prod" && \
 	alembic history -v
+
+# pytest
+.PHONY: test test-verbose test-file test-cov
+
+test:
+	@echo "🧪 Running all tests..."
+	pipenv run pytest
+
+test-verbose:
+	@echo "🧪 Running all tests with verbose output..."
+	pipenv run pytest -v
+
+test-file:
+	@echo "🧪 Running tests for file: $(path)"
+	pipenv run pytest $(path)
+
+test-cov:
+	@echo "🧪 Running tests and generating coverage report..."
+	pipenv run pytest --cov=app --cov-report=html
