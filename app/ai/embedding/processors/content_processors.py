@@ -67,7 +67,7 @@ class HTMLProcessor(ContentProcessor):
         # JavaScript 코드 패턴 제거
         text = re.sub(r'function\s*\([^)]*\)\s*\{[^}]*\}', '', text)
         text = re.sub(r'var\s+\w+\s*=.*?;', '', text)
-        text = re.sub(r'document\.\w+.*?;', '', text)
+        text = re.sub(r'document\.\w+.*;', '', text)
         
         # CSS 관련 패턴 제거
         text = re.sub(r'\w+\s*:\s*[^;]+;', '', text)
@@ -110,14 +110,17 @@ class TextProcessor(ContentProcessor):
         try:
             logger.info(f"Processing text content (length: {len(content)})")
             
-            # 여러 줄바꿈을 하나로 변환
-            text = re.sub(r'\n+', '\n', content)
+            # 1. 각 라인의 앞뒤 공백 제거
+            lines = [line.strip() for line in content.split('\n')]
             
-            # 여러 공백을 하나로 변환
+            # 2. 빈 라인 제거
+            non_empty_lines = [line for line in lines if line]
+            
+            # 3. 다시 합치기
+            text = '\n'.join(non_empty_lines)
+            
+            # 4. 여러 공백을 하나로 변환
             text = re.sub(r' +', ' ', text)
-            
-            # 앞뒤 공백 제거
-            text = text.strip()
             
             logger.info(f"Text processing completed (output length: {len(text)})")
             return text
