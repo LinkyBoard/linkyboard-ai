@@ -135,3 +135,5 @@ test-file:
 test-cov:
 	@echo "🧪 Running tests and generating coverage report..."
 	pipenv run pytest --cov=app --cov-report=html
+	@echo "📊 Opening coverage report..."
+	open htmlcov/index.html
