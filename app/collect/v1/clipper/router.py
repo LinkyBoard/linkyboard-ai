@@ -70,9 +70,14 @@ async def sync_webpage(
         )
 
         # 서비스 레이어 호출
-        result = await clipper_service.sync_webpage(session, background_tasks, request_data)
+        await clipper_service.sync_webpage(session, background_tasks, request_data)
         logger.info(f"Webpage sync completed successfully for item {item_id}")
-        return result
+        
+        # 성공 응답 반환
+        return WebpageSyncResponse(
+            success=True,
+            message="웹페이지가 성공적으로 동기화되었습니다."
+        )
         
     except Exception as e:
         logger.error(f"Failed to sync webpage for item {item_id}: {str(e)}")

@@ -118,22 +118,30 @@ history-prod:
 	alembic history -v
 
 # pytest
-.PHONY: test test-verbose test-file test-cov
+.PHONY: test test-unit test-functional test-verbose test-file test-cov
 
 test:
-	@echo "🧪 Running all tests..."
-	pipenv run pytest
+	@echo "🧪 Running all tests (unit and functional)..."
+	pipenv run pytest tests/unit tests/functional
+
+test-unit:
+	@echo "🧪 Running unit tests..."
+	pipenv run pytest tests/unit
+
+test-functional:
+	@echo "🧪 Running functional tests..."
+	pipenv run pytest tests/functional
 
 test-verbose:
 	@echo "🧪 Running all tests with verbose output..."
-	pipenv run pytest -v
+	pipenv run pytest -v tests/unit tests/functional
 
 test-file:
 	@echo "🧪 Running tests for file: $(path)"
 	pipenv run pytest $(path)
 
 test-cov:
-	@echo "🧪 Running tests and generating coverage report..."
-	pipenv run pytest --cov=app --cov-report=html
+	@echo "🧪 Running unit tests and generating coverage report..."
+	pipenv run pytest --cov=app --cov-report=html tests/unit
 	@echo "📊 Opening coverage report..."
 	open htmlcov/index.html
