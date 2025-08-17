@@ -1,0 +1,218 @@
+"""
+With AI Router - 모델 선택 지원 AI 질의 엔드포인트
+"""
+
+from typing import Optional, List
+from uuid import UUID
+from fastapi import APIRouter, HTTPException, Form, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.database import get_db
+from app.core.logging import get_logger
+from app.with_ai.service import with_ai_service
+from app.with_ai.schemas import (
+    AskRequest,
+    AskResponse,
+    DraftRequest,
+    DraftResponse,
+    ModelBudgetRequest,
+    ModelBudgetResponse
+)
+
+logger = get_logger(__name__)
+
+# Router 인스턴스 생성
+router = APIRouter(
+    prefix="/with-ai",
+    tags=["with-ai"],
+    responses={
+        400: {"description": "Bad Request"},
+        403: {"description": "Budget Exceeded"},
+        404: {"description": "Not found"},
+        422: {"description": "Validation Error"},
+        500: {"description": "Internal Server Error"},
+    },
+)
+
+
+@router.post("/ask", response_model=AskResponse)
+async def ask_with_model(
+    query: str = Form(..., description="질의 내용"),
+    board_id: UUID = Form(..., description="보드 ID"),
+    user_id: int = Form(..., description="사용자 ID"),
+    k: int = Form(default=4, description="검색 결과 수"),
+    max_out_tokens: int = Form(default=800, description="최대 출력 토큰 수"),
+    model: Optional[str] = Form(None, description="사용할 AI 모델 (별칭)"),
+    budget_wtu: Optional[int] = Form(None, description="예산 WTU 제한"),
+    confidence_target: Optional[float] = Form(None, description="품질 목표 (0.0-1.0)"),
+    session: AsyncSession = Depends(get_db)
+):
+    """
+    모델 선택을 지원하는 AI 질의
+    
+    사용자가 지정한 모델이나 보드/사용자 정책에 따른 모델로 질의를 처리합니다.
+    WTU 예산 및 정책 제한을 확인하여 안전하게 실행됩니다.
+    """
+    try:
+        logger.info(f"AI ask request - user: {user_id}, board: {board_id}, model: {model}")
+        
+        result = await with_ai_service.ask_with_model_selection(
+            query=query,
+            board_id=board_id,
+            user_id=user_id,
+            k=k,
+            max_out_tokens=max_out_tokens,
+            model=model,
+            budget_wtu=budget_wtu,
+            confidence_target=confidence_target
+        )
+        
+        return AskResponse(**result)
+        
+    except ValueError as e:
+        logger.warning(f"Ask request validation failed: {str(e)}")
+        if "budget" in str(e).lower() or "exceeded" in str(e).lower():
+            raise HTTPException(status_code=403, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Ask request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="AI 질의 처리 중 오류가 발생했습니다.")
+
+
+@router.post("/draft", response_model=DraftResponse)
+async def draft_with_model(
+    outline: List[str] = Form(..., description="초안 개요"),
+    board_id: UUID = Form(..., description="보드 ID"),
+    user_id: int = Form(..., description="사용자 ID"),
+    max_out_tokens: int = Form(default=1500, description="최대 출력 토큰 수"),
+    model: Optional[str] = Form(None, description="사용할 AI 모델 (별칭)"),
+    budget_wtu: Optional[int] = Form(None, description="예산 WTU 제한"),
+    confidence_target: Optional[float] = Form(None, description="품질 목표 (0.0-1.0)"),
+    session: AsyncSession = Depends(get_db)
+):
+    """
+    모델 선택을 지원하는 초안 작성
+    
+    사용자가 지정한 모델이나 보드/사용자 정책에 따른 모델로 초안을 작성합니다.
+    WTU 예산 및 정책 제한을 확인하여 안전하게 실행됩니다.
+    """
+    try:
+        logger.info(f"AI draft request - user: {user_id}, board: {board_id}, model: {model}")
+        
+        result = await with_ai_service.draft_with_model_selection(
+            outline=outline,
+            board_id=board_id,
+            user_id=user_id,
+            max_out_tokens=max_out_tokens,
+            model=model,
+            budget_wtu=budget_wtu,
+            confidence_target=confidence_target
+        )
+        
+        return DraftResponse(**result)
+        
+    except ValueError as e:
+        logger.warning(f"Draft request validation failed: {str(e)}")
+        if "budget" in str(e).lower() or "exceeded" in str(e).lower():
+            raise HTTPException(status_code=403, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Draft request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="초안 작성 중 오류가 발생했습니다.")
+
+
+@router.post("/budget/estimate", response_model=ModelBudgetResponse)
+async def estimate_budget(
+    request: ModelBudgetRequest,
+    session: AsyncSession = Depends(get_db)
+):
+    """
+    모델별 예상 WTU 비용 계산
+    
+    입력된 텍스트와 예상 출력 토큰에 대해 각 모델별 WTU 비용을 계산합니다.
+    """
+    try:
+        from app.metrics.model_catalog_service import model_catalog_service
+        from app.metrics.model_policy_service import model_policy_service
+        from app.metrics import count_tokens
+        
+        # 사용 가능한 모델 목록 조회
+        available_models = await model_policy_service.get_available_models(
+            board_id=request.board_id,
+            user_id=request.user_id,
+            model_type="llm"
+        )
+        
+        estimates = []
+        for model in available_models:
+            # 토큰 수 계산
+            input_tokens = count_tokens(request.input_text, model.model_name)
+            
+            # 예상 WTU 계산
+            estimated_wtu = await model_policy_service.estimate_wtu_cost(
+                model=model,
+                estimated_input_tokens=input_tokens,
+                estimated_output_tokens=request.estimated_output_tokens
+            )
+            
+            estimates.append({
+                "model_alias": model.alias,
+                "model_name": model.model_name,
+                "input_tokens": input_tokens,
+                "estimated_output_tokens": request.estimated_output_tokens,
+                "estimated_wtu": estimated_wtu,
+                "provider": model.provider
+            })
+        
+        # WTU 순으로 정렬
+        estimates.sort(key=lambda x: x["estimated_wtu"])
+        
+        return ModelBudgetResponse(
+            estimates=estimates,
+            total_available_models=len(estimates)
+        )
+        
+    except Exception as e:
+        logger.error(f"Budget estimation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="예산 계산 중 오류가 발생했습니다.")
+
+
+@router.get("/models/available")
+async def get_available_models(
+    board_id: UUID,
+    user_id: int,
+    model_type: str = "llm",
+    session: AsyncSession = Depends(get_db)
+):
+    """
+    사용 가능한 모델 목록 조회
+    
+    보드/사용자 정책에 따라 사용 가능한 모델 목록을 반환합니다.
+    """
+    try:
+        from app.metrics.model_policy_service import model_policy_service
+        
+        models = await model_policy_service.get_available_models(
+            board_id=board_id,
+            user_id=user_id,
+            model_type=model_type
+        )
+        
+        return {
+            "models": [
+                {
+                    "alias": model.alias,
+                    "model_name": model.model_name,
+                    "provider": model.provider,
+                    "description": f"{model.provider} {model.model_name}",
+                    "is_default": False  # 실제로는 정책에서 결정
+                }
+                for model in models
+            ],
+            "total_count": len(models)
+        }
+        
+    except Exception as e:
+        logger.error(f"Available models query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="모델 목록 조회 중 오류가 발생했습니다.")

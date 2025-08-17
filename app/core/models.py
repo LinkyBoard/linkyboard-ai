@@ -370,6 +370,9 @@ class UsageMeter(Base):
     # 사용된 모델 정보
     llm_model = Column(String(100), nullable=True, comment="사용된 LLM 모델명")
     embedding_model = Column(String(100), nullable=True, comment="사용된 임베딩 모델명")
+    selected_model_id = Column(Integer, ForeignKey("model_catalog.id", ondelete="SET NULL"), nullable=True, comment="사용자가 선택한 모델 ID")
+    model_weights_snapshot = Column(JSON, nullable=True, comment="실행 시점의 모델 가중치 스냅샷")
+    board_id = Column(UUID(as_uuid=True), nullable=True, comment="보드 ID (정책 추적용)")
     
     # 토큰 사용량
     in_tokens = Column(Integer, default=0, nullable=False, comment="입력 토큰 수")
@@ -390,6 +393,7 @@ class UsageMeter(Base):
     
     # 관계 설정
     user = relationship("User")
+    selected_model = relationship("ModelCatalog")
     
     __table_args__ = (
         Index('ix_usage_meter_plan_month', 'plan_month'),
@@ -397,6 +401,8 @@ class UsageMeter(Base):
         Index('ix_usage_meter_created_at', 'created_at'),
         Index('ix_usage_meter_llm_model', 'llm_model'),
         Index('ix_usage_meter_embedding_model', 'embedding_model'),
+        Index('ix_usage_meter_selected_model', 'selected_model_id'),
+        Index('ix_usage_meter_board_id', 'board_id'),
     )
 
     def __repr__(self):
@@ -431,13 +437,18 @@ class DedupSuggestion(Base):
         return f"<DedupSuggestion(board_id={self.board_id}, docs={len(self.doc_ids)}, score={self.score:.2f})>"
 
 
-class ModelPricing(Base):
-    """모델별 가격 정보 및 WTU 가중치 테이블"""
-    __tablename__ = "model_pricing"
+class ModelCatalog(Base):
+    """모델 카탈로그 및 WTU 가중치 테이블 (구 ModelPricing)"""
+    __tablename__ = "model_catalog"
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment="가격 정보 ID")
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="모델 카탈로그 ID")
     model_name = Column(String(100), nullable=False, unique=True, comment="모델명 (예: gpt-3.5-turbo, text-embedding-3-small)")
+    alias = Column(String(100), nullable=False, comment="모델 별칭 (사용자 친화적 이름)")
+    provider = Column(String(50), nullable=False, default="openai", comment="모델 제공자 (openai, anthropic 등)")
     model_type = Column(String(20), nullable=False, comment="모델 유형: llm, embedding")
+    role_mask = Column(Integer, nullable=False, default=7, comment="모델 역할 마스크 (1=LLM, 2=embedding, 4=multimodal)")
+    status = Column(String(20), nullable=False, default="active", comment="모델 상태 (active, deprecated, beta)")
+    version = Column(String(20), nullable=True, comment="모델 버전")
     
     # 원본 가격 정보 (USD per 1M tokens)
     price_input = Column(Float, nullable=True, comment="입력 토큰 가격 (USD/1M)")
@@ -464,13 +475,15 @@ class ModelPricing(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True, comment="수정일시")
     
     __table_args__ = (
-        Index('ix_model_pricing_name', 'model_name'),
-        Index('ix_model_pricing_type', 'model_type'),
-        Index('ix_model_pricing_active', 'is_active'),
+        Index('ix_model_catalog_name', 'model_name'),
+        Index('ix_model_catalog_alias', 'alias'),
+        Index('ix_model_catalog_provider', 'provider'),
+        Index('ix_model_catalog_status', 'status'),
+        Index('ix_model_catalog_type_status', 'model_type', 'status'),
     )
 
     def __repr__(self):
-        return f"<ModelPricing(model={self.model_name}, type={self.model_type}, active={self.is_active})>"
+        return f"<ModelCatalog(alias={self.alias}, provider={self.provider}, status={self.status})>"
     
     def calculate_weights(self) -> None:
         """기준 모델 대비 WTU 가중치 계산"""
@@ -497,3 +510,72 @@ class ModelPricing(Base):
     def weight_cached_input(self) -> float:
         """캐시된 입력 토큰의 가중치"""
         return (self.weight_input or 0) * self.cached_factor
+
+
+class ModelWeightHistory(Base):
+    """모델 가중치 변경 히스토리 테이블"""
+    __tablename__ = "model_weight_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="가중치 히스토리 ID")
+    model_id = Column(Integer, ForeignKey("model_catalog.id", ondelete="CASCADE"), nullable=False, comment="모델 카탈로그 ID (외래키)")
+    w_in = Column(Float, nullable=True, comment="입력 토큰 WTU 가중치")
+    w_out = Column(Float, nullable=True, comment="출력 토큰 WTU 가중치")
+    w_embed = Column(Float, nullable=True, comment="임베딩 토큰 WTU 가중치")
+    reason = Column(Text, nullable=True, comment="가중치 변경 사유")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
+    
+    # 관계 설정
+    model = relationship("ModelCatalog")
+    
+    __table_args__ = (
+        Index('ix_model_weight_history_model_id', 'model_id'),
+        Index('ix_model_weight_history_created_at', 'created_at'),
+    )
+
+    def __repr__(self):
+        return f"<ModelWeightHistory(model_id={self.model_id}, w_in={self.w_in}, w_out={self.w_out})>"
+
+
+class BoardModelPolicy(Base):
+    """보드별 모델 정책 테이블"""
+    __tablename__ = "board_model_policy"
+
+    board_id = Column(UUID(as_uuid=True), primary_key=True, comment="보드 ID")
+    default_model_id = Column(Integer, ForeignKey("model_catalog.id", ondelete="SET NULL"), nullable=True, comment="기본 모델 ID (외래키)")
+    allowed_model_ids = Column(ARRAY(Integer), nullable=True, comment="허용 모델 ID 배열")
+    budget_wtu = Column(Integer, nullable=True, comment="월 예산 WTU")
+    confidence_target = Column(Float, nullable=True, comment="품질 목표 점수 (0.0-1.0)")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True, comment="수정일시")
+    
+    # 관계 설정
+    default_model = relationship("ModelCatalog")
+    
+    __table_args__ = (
+        Index('ix_board_model_policy_default_model', 'default_model_id'),
+    )
+
+    def __repr__(self):
+        return f"<BoardModelPolicy(board_id={self.board_id}, default_model_id={self.default_model_id})>"
+
+
+class UserModelPolicy(Base):
+    """사용자별 모델 정책 테이블 (선택사항)"""
+    __tablename__ = "user_model_policy"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, comment="사용자 ID")
+    default_model_id = Column(Integer, ForeignKey("model_catalog.id", ondelete="SET NULL"), nullable=True, comment="기본 모델 ID (외래키)")
+    allowed_model_ids = Column(ARRAY(Integer), nullable=True, comment="허용 모델 ID 배열")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True, comment="수정일시")
+    
+    # 관계 설정
+    user = relationship("User")
+    default_model = relationship("ModelCatalog")
+    
+    __table_args__ = (
+        Index('ix_user_model_policy_default_model', 'default_model_id'),
+    )
+
+    def __repr__(self):
+        return f"<UserModelPolicy(user_id={self.user_id}, default_model_id={self.default_model_id})>"

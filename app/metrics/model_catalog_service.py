@@ -1,7 +1,7 @@
 """
-모델별 가격 정보 및 WTU 가중치 관리 서비스
+모델 카탈로그 및 WTU 가중치 관리 서비스
 
-OpenAI 등 AI 모델의 가격 정보를 관리하고,
+OpenAI 등 AI 모델의 카탈로그 정보를 관리하고,
 기준 모델 대비 WTU 가중치를 계산합니다.
 """
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class ModelCatalogService:
-    """모델별 가격 정보 및 WTU 가중치 관리 서비스 (구 ModelPricingService)"""
+    """모델 카탈로그 및 WTU 가중치 관리 서비스"""
     
     def __init__(self):
         self._catalog_cache: Dict[str, ModelCatalog] = {}
@@ -103,7 +103,7 @@ class ModelCatalogService:
         finally:
             if close_session:
                 await session.aclose()
-    
+
     async def get_wtu_weights(self, llm_model: Optional[str] = None, embedding_model: Optional[str] = None, 
                              session: Optional[AsyncSession] = None) -> Dict[str, float]:
         """모델별 WTU 가중치 조회"""
@@ -116,32 +116,37 @@ class ModelCatalogService:
         
         # LLM 모델 가중치 조회
         if llm_model:
-            llm_pricing = await self.get_model_pricing(llm_model, session)
-            if llm_pricing:
-                if llm_pricing.weight_input is not None:
-                    weights['w_in'] = llm_pricing.weight_input
-                    weights['w_cached_in'] = llm_pricing.weight_cached_input
-                if llm_pricing.weight_output is not None:
-                    weights['w_out'] = llm_pricing.weight_output
+            llm_catalog = await self.get_model_catalog(llm_model, session)
+            if llm_catalog:
+                if llm_catalog.weight_input is not None:
+                    weights['w_in'] = llm_catalog.weight_input
+                    weights['w_cached_in'] = llm_catalog.weight_cached_input
+                if llm_catalog.weight_output is not None:
+                    weights['w_out'] = llm_catalog.weight_output
         
         # 임베딩 모델 가중치 조회
         if embedding_model:
-            embed_pricing = await self.get_model_pricing(embedding_model, session)
-            if embed_pricing and embed_pricing.weight_embedding is not None:
-                weights['w_embed'] = embed_pricing.weight_embedding
+            embed_catalog = await self.get_model_catalog(embedding_model, session)
+            if embed_catalog and embed_catalog.weight_embedding is not None:
+                weights['w_embed'] = embed_catalog.weight_embedding
         
         return weights
-    
-    async def add_or_update_model_pricing(
+
+    async def add_or_update_model_catalog(
         self,
         model_name: str,
+        alias: str,
+        provider: str,
         model_type: str,
         price_input: Optional[float] = None,
         price_output: Optional[float] = None,
         price_embedding: Optional[float] = None,
+        role_mask: int = 7,
+        status: str = "active",
+        version: Optional[str] = None,
         session: Optional[AsyncSession] = None
     ) -> ModelCatalog:
-        """모델 가격 정보 추가 또는 업데이트"""
+        """모델 카탈로그 정보 추가 또는 업데이트"""
         close_session = False
         if session is None:
             session = AsyncSessionLocal()
@@ -155,6 +160,13 @@ class ModelCatalogService:
             
             if existing:
                 # 기존 레코드 업데이트
+                existing.alias = alias
+                existing.provider = provider
+                existing.model_type = model_type
+                existing.role_mask = role_mask
+                existing.status = status
+                existing.version = version
+                
                 if price_input is not None:
                     existing.price_input = price_input
                 if price_output is not None:
@@ -163,36 +175,41 @@ class ModelCatalogService:
                     existing.price_embedding = price_embedding
                 
                 existing.calculate_weights()
-                pricing = existing
-                logger.info(f"Updated pricing for {model_name}")
+                catalog = existing
+                logger.info(f"Updated catalog for {model_name}")
             else:
                 # 새 레코드 생성
-                pricing = ModelCatalog(
+                catalog = ModelCatalog(
                     model_name=model_name,
+                    alias=alias,
+                    provider=provider,
                     model_type=model_type,
+                    role_mask=role_mask,
+                    status=status,
+                    version=version,
                     price_input=price_input,
                     price_output=price_output,
                     price_embedding=price_embedding
                 )
-                pricing.calculate_weights()
-                session.add(pricing)
-                logger.info(f"Added new pricing for {model_name}")
+                catalog.calculate_weights()
+                session.add(catalog)
+                logger.info(f"Added new catalog for {model_name}")
             
             await session.commit()
-            await session.refresh(pricing)
+            await session.refresh(catalog)
             
             # 캐시 무효화
-            if model_name in self._pricing_cache:
-                del self._pricing_cache[model_name]
+            if model_name in self._catalog_cache:
+                del self._catalog_cache[model_name]
             
-            return pricing
+            return catalog
             
         finally:
             if close_session:
                 await session.aclose()
-    
+
     async def initialize_default_models(self, session: Optional[AsyncSession] = None) -> None:
-        """기본 모델들의 가격 정보 초기화"""
+        """기본 모델들의 카탈로그 정보 초기화"""
         close_session = False
         if session is None:
             session = AsyncSessionLocal()
@@ -201,70 +218,31 @@ class ModelCatalogService:
         try:
             default_models = [
                 {
-                    'model_name': 'gpt-4o-mini',
-                    'alias': 'gpt-4o-mini',
+                    'model_name': 'gpt-5-mini',
+                    'alias': 'GPT-5 Mini',
                     'provider': 'openai',
                     'model_type': 'llm',
-                    'role_mask': 1,  # LLM
-                    'status': 'active',
-                    'version': '2024-07-18',
-                    'price_input': 0.15,
-                    'price_output': 0.60,
-                    'reference_model': 'gpt-4o-mini',
-                    'reference_price_input': 0.15,
-                    'reference_price_output': 0.60,
-                    'cached_factor': 0.5,
-                    'embedding_alpha': 0.8,
-                    'is_active': True
+                    'role_mask': 1,  # LLM only
+                    'price_input': 0.25,
+                    'price_output': 2.00,
                 },
                 {
                     'model_name': 'gpt-3.5-turbo',
-                    'alias': 'gpt-3.5-turbo',
+                    'alias': 'GPT-3.5 Turbo',
                     'provider': 'openai',
                     'model_type': 'llm',
-                    'role_mask': 1,  # LLM
-                    'status': 'active',
+                    'role_mask': 1,  # LLM only
                     'price_input': 0.50,
                     'price_output': 1.50,
-                    'reference_model': 'gpt-4o-mini',
-                    'reference_price_input': 0.15,
-                    'reference_price_output': 0.60,
-                    'cached_factor': 0.5,
-                    'embedding_alpha': 0.8,
-                    'is_active': True
                 },
                 {
                     'model_name': 'text-embedding-3-small',
-                    'alias': 'embedding-small',
+                    'alias': 'Text Embedding 3 Small',
                     'provider': 'openai',
                     'model_type': 'embedding',
-                    'role_mask': 2,  # embedding
-                    'status': 'active',
+                    'role_mask': 2,  # Embedding only
                     'price_embedding': 0.02,
-                    'reference_model': 'gpt-4o-mini',
-                    'reference_price_input': 0.15,
-                    'reference_price_output': 0.60,
-                    'cached_factor': 0.1,
-                    'embedding_alpha': 0.8,
-                    'is_active': True
                 },
-                {
-                    'model_name': 'claude-3-haiku-20240307',
-                    'alias': 'claude-3-haiku',
-                    'provider': 'anthropic',
-                    'model_type': 'llm',
-                    'role_mask': 1,  # LLM
-                    'status': 'active',
-                    'version': '20240307',
-                    'price_input': 0.25,
-                    'price_output': 1.25,
-                    'reference_model': 'gpt-4o-mini',
-                    'reference_price_input': 0.15,
-                    'reference_price_output': 0.60,
-                    'cached_factor': 0.5,
-                    'embedding_alpha': 0.8,
-                    'is_active': True
-                }
             ]
             
             for model_data in default_models:
@@ -274,23 +252,26 @@ class ModelCatalogService:
                 existing = result.scalar_one_or_none()
                 
                 if not existing:
-                    pricing = ModelCatalog(**model_data)
-                    pricing.calculate_weights()
-                    session.add(pricing)
-                    logger.info(f"Added default pricing for {model_data['model_name']}")
+                    catalog = ModelCatalog(**model_data)
+                    catalog.calculate_weights()
+                    session.add(catalog)
+                    logger.info(f"Added default catalog for {model_data['model_name']}")
             
             await session.commit()
             
         finally:
             if close_session:
                 await session.aclose()
-    
+
     def clear_cache(self) -> None:
-        """가격 정보 캐시 초기화"""
-        self._pricing_cache.clear()
+        """카탈로그 정보 캐시 초기화"""
+        self._catalog_cache.clear()
         self._cache_timestamp = None
-        logger.info("Cleared pricing cache")
+        logger.info("Cleared catalog cache")
 
 
 # 전역 서비스 인스턴스
-pricing_service = ModelCatalogService()
+model_catalog_service = ModelCatalogService()
+
+# 하위 호환성을 위한 별칭
+pricing_service = model_catalog_service

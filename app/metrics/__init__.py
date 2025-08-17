@@ -14,12 +14,11 @@ Metrics 모듈 - WTU 계측 및 사용량 관리
 
 from .wtu_calculator import calculate_wtu, calculate_wtu_simple, calculate_embedding_wtu, calculate_llm_wtu
 from .usage_recorder import (
-    record_usage, 
     record_embedding_usage, 
     record_llm_usage,
-    get_monthly_usage, 
-    get_total_monthly_wtu,
-    get_usage_by_model
+    get_user_monthly_wtu, 
+    get_board_total_monthly_wtu,
+    get_usage_statistics
 )
 from .token_counter import count_tokens, count_tokens_batch, estimate_embedding_tokens
 from .pricing_service import pricing_service
@@ -32,14 +31,13 @@ __all__ = [
     "calculate_llm_wtu",
     
     # 사용량 기록
-    "record_usage",
     "record_embedding_usage",
     "record_llm_usage",
     
     # 사용량 조회
-    "get_monthly_usage",
-    "get_total_monthly_wtu", 
-    "get_usage_by_model",
+    "get_user_monthly_wtu",
+    "get_board_total_monthly_wtu", 
+    "get_usage_statistics",
     
     # 토큰 카운팅
     "count_tokens",

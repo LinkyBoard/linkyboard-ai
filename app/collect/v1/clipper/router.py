@@ -90,6 +90,10 @@ async def summarize_webpage(
     html_file: UploadFile = File(..., description="HTML 파일"),
     user_id: int = Form(..., description="사용자 ID"),
     tag_count: int = Form(default=5, description="추천 태그 수"),
+    board_id: Optional[str] = Form(None, description="보드 ID"),
+    model: Optional[str] = Form(None, description="사용할 AI 모델 (별칭)"),
+    budget_wtu: Optional[int] = Form(None, description="예산 WTU 제한"),
+    confidence_target: Optional[float] = Form(None, description="품질 목표 (0.0-1.0)"),
     session: AsyncSession = Depends(get_db),
     clipper_service = Depends(get_clipper_service)
 ):

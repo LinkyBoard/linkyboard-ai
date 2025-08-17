@@ -1,6 +1,7 @@
 from typing import Optional, List, Dict
 from pydantic import BaseModel, Field
 from datetime import datetime
+from uuid import UUID
 
 
 # 중복 후보 스키마
@@ -34,6 +35,10 @@ class SummarizeRequest(BaseModel):
     url: str = Field(..., description="요약할 웹페이지 URL")
     html_content: str = Field(..., description="HTML 콘텐츠")
     user_id: int = Field(..., description="사용자 ID")
+    board_id: Optional[UUID] = Field(None, description="보드 ID")
+    model: Optional[str] = Field(None, description="사용할 AI 모델 (별칭)")
+    budget_wtu: Optional[int] = Field(None, description="예산 WTU 제한")
+    confidence_target: Optional[float] = Field(None, description="품질 목표 (0.0-1.0)")
 
 
 class UserInteractionRequest(BaseModel):
@@ -57,3 +62,5 @@ class SummarizeResponse(BaseModel):
     summary: str
     tags: list[str]
     category: str
+    usage: Optional[Dict] = Field(None, description="사용량 정보")
+    routing: Optional[Dict] = Field(None, description="모델 라우팅 정보")
