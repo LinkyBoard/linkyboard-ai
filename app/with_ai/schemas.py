@@ -7,6 +7,34 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
+class SelectedItem(BaseModel):
+    """선택된 아이템 정보"""
+    item_id: int = Field(..., description="아이템 ID")
+    include_summary: bool = Field(default=True, description="요약 포함 여부")
+    include_content: bool = Field(default=False, description="전체 내용 포함 여부")
+
+
+class AskWithItemsRequest(BaseModel):
+    """아이템 기반 AI 질의 요청 스키마"""
+    query: str = Field(..., description="질의 내용")
+    instruction: str = Field(..., description="AI에게 주는 작업 지시사항")
+    selected_items: List[SelectedItem] = Field(..., description="선택된 아이템 목록")
+    board_id: UUID = Field(..., description="보드 ID")
+    user_id: int = Field(..., description="사용자 ID")
+    max_out_tokens: int = Field(default=1500, description="최대 출력 토큰 수")
+    model: Optional[str] = Field(None, description="사용할 AI 모델 (별칭)")
+    budget_wtu: Optional[int] = Field(None, description="예산 WTU 제한")
+    confidence_target: Optional[float] = Field(None, description="품질 목표 (0.0-1.0)")
+
+
+class AskWithItemsResponse(BaseModel):
+    """아이템 기반 AI 질의 응답 스키마"""
+    answer_md: str = Field(..., description="마크다운 형식의 답변")
+    used_items: List[Dict[str, Any]] = Field(..., description="사용된 아이템 정보")
+    usage: Dict[str, Any] = Field(..., description="사용량 정보")
+    routing: Dict[str, Any] = Field(..., description="모델 라우팅 정보")
+
+
 class AskRequest(BaseModel):
     """AI 질의 요청 스키마"""
     query: str = Field(..., description="질의 내용")

@@ -116,19 +116,19 @@ class ModelCatalogService:
         
         # LLM 모델 가중치 조회
         if llm_model:
-            llm_pricing = await self.get_model_pricing(llm_model, session)
-            if llm_pricing:
-                if llm_pricing.weight_input is not None:
-                    weights['w_in'] = llm_pricing.weight_input
-                    weights['w_cached_in'] = llm_pricing.weight_cached_input
-                if llm_pricing.weight_output is not None:
-                    weights['w_out'] = llm_pricing.weight_output
+            llm_catalog = await self.get_model_catalog(llm_model, session)
+            if llm_catalog:
+                if llm_catalog.weight_input is not None:
+                    weights['w_in'] = llm_catalog.weight_input
+                    weights['w_cached_in'] = llm_catalog.weight_cached_input
+                if llm_catalog.weight_output is not None:
+                    weights['w_out'] = llm_catalog.weight_output
         
         # 임베딩 모델 가중치 조회
         if embedding_model:
-            embed_pricing = await self.get_model_pricing(embedding_model, session)
-            if embed_pricing and embed_pricing.weight_embedding is not None:
-                weights['w_embed'] = embed_pricing.weight_embedding
+            embed_catalog = await self.get_model_catalog(embedding_model, session)
+            if embed_catalog and embed_catalog.weight_embedding is not None:
+                weights['w_embed'] = embed_catalog.weight_embedding
         
         return weights
     
