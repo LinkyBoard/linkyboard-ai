@@ -2,7 +2,7 @@ import openai
 from typing import List, Dict, Any
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.metrics import count_tokens, record_text_generation_usage
+from app.metrics import count_tokens, record_llm_usage
 from app.observability import trace_ai_operation, record_ai_tokens, record_wtu_usage
 
 logger = get_logger(__name__)
@@ -76,11 +76,11 @@ class OpenAIService:
                 # WTU 사용량 기록 (user_id가 있을 때만)
                 if user_id:
                     try:
-                        await record_text_generation_usage(
+                        await record_llm_usage(
                             user_id=user_id,
-                            input_tokens=input_tokens,
-                            output_tokens=output_tokens,
-                            model=settings.OPENAI_MODEL
+                            in_tokens=input_tokens,
+                            out_tokens=output_tokens,
+                            llm_model=settings.OPENAI_MODEL
                         )
                         # WTU도 관측성 메트릭에 기록
                         from app.metrics import calculate_wtu
@@ -151,11 +151,11 @@ class OpenAIService:
             # WTU 사용량 기록 (user_id가 있을 때만)
             if user_id:
                 try:
-                    await record_text_generation_usage(
+                    await record_llm_usage(
                         user_id=user_id,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        model=settings.OPENAI_MODEL
+                        in_tokens=input_tokens,
+                        out_tokens=output_tokens,
+                        llm_model=settings.OPENAI_MODEL
                     )
                     logger.bind(ai=True).info(f"WTU usage recorded for user {user_id}: {input_tokens} input + {output_tokens} output tokens")
                 except Exception as wtu_error:

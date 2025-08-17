@@ -12,7 +12,7 @@ from typing import Optional, Dict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal
 from app.core.models import ModelPricing
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class ModelPricingService:
         # DB에서 조회
         close_session = False
         if session is None:
-            session = await get_db().__anext__()
+            session = AsyncSessionLocal()
             close_session = True
         
         try:
@@ -59,7 +59,7 @@ class ModelPricingService:
             
         finally:
             if close_session:
-                await session.close()
+                await session.aclose()
     
     async def get_wtu_weights(self, llm_model: Optional[str] = None, embedding_model: Optional[str] = None, 
                              session: Optional[AsyncSession] = None) -> Dict[str, float]:
@@ -101,7 +101,7 @@ class ModelPricingService:
         """모델 가격 정보 추가 또는 업데이트"""
         close_session = False
         if session is None:
-            session = await get_db().__anext__()
+            session = AsyncSessionLocal()
             close_session = True
         
         try:
@@ -146,13 +146,13 @@ class ModelPricingService:
             
         finally:
             if close_session:
-                await session.close()
+                await session.aclose()
     
     async def initialize_default_models(self, session: Optional[AsyncSession] = None) -> None:
         """기본 모델들의 가격 정보 초기화"""
         close_session = False
         if session is None:
-            session = await get_db().__anext__()
+            session = AsyncSessionLocal()
             close_session = True
         
         try:
@@ -192,7 +192,7 @@ class ModelPricingService:
             
         finally:
             if close_session:
-                await session.close()
+                await session.aclose()
     
     def clear_cache(self) -> None:
         """가격 정보 캐시 초기화"""

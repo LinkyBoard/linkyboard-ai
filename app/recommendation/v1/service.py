@@ -1,6 +1,7 @@
 from fastapi import Depends
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
+from sqlalchemy import text
 from app.core.logging import get_logger
 from app.core.database import get_db
 from app.ai.recommendation.vector_service import VectorProcessingService
@@ -111,22 +112,27 @@ class RecommendationService:
                 )
             
             # 2. 벡터 유사도 검색
-            similar_content = await self.db.fetch_all("""
+            result = await self.db.execute(text("""
                 SELECT 
                     ce.content_id,
                     s.title,
                     s.summary,
                     s.url,
                     c.name as category,
-                    1 - (ce.embedding <=> $1::vector) as similarity_score
+                    1 - (ce.embedding <=> :embedding::vector) as similarity_score
                 FROM content_embeddings ce
                 JOIN summaries s ON ce.content_id = s.id
                 JOIN categories c ON s.category_id = c.id
-                WHERE ce.content_id != $2
-                AND ce.embedding <=> $1::vector < 0.5  -- 유사도 임계값
-                ORDER BY ce.embedding <=> $1::vector
-                LIMIT $3
-            """, base_content_embedding['embedding'], content_id, limit)
+                WHERE ce.content_id != :content_id
+                AND ce.embedding <=> :embedding::vector < 0.5  -- 유사도 임계값
+                ORDER BY ce.embedding <=> :embedding::vector
+                LIMIT :limit
+            """), {
+                'embedding': base_content_embedding['embedding'], 
+                'content_id': content_id, 
+                'limit': limit
+            })
+            similar_content = result.fetchall()
             
             # 3. 응답 구성
             recommendations = []

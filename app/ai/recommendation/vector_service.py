@@ -1,5 +1,6 @@
 import numpy as np
 from typing import List, Dict, Optional, Tuple
+from sqlalchemy import text
 from app.core.logging import get_logger
 from app.ai.embedding.generators.keyword_generator import KeywordEmbeddingGenerator
 from app.ai.embedding.generators.category_generator import CategoryEmbeddingGenerator
@@ -82,9 +83,9 @@ class VectorProcessingService:
         """키워드 배치 저장"""
         try:
             # 기존 키워드 확인
-            existing_keywords = await self.db.fetch_all("""
-                SELECT keyword, id FROM keywords WHERE keyword = ANY($1::text[])
-            """, keywords)
+            query = text("SELECT keyword, id FROM keywords WHERE keyword = ANY(:keywords)")
+            result = await self.db.execute(query, {"keywords": keywords})
+            existing_keywords = result.fetchall()
             
             existing_map = {row['keyword']: row['id'] for row in existing_keywords}
             new_keywords = [kw for kw in keywords if kw not in existing_map]
@@ -109,18 +110,19 @@ class VectorProcessingService:
                         insert_data.append((keyword, embedding, 1))
                 
                 if insert_data:
-                    new_ids = await self.db.fetch_all("""
+                    result = await self.db.execute(text("""
                         INSERT INTO keywords (keyword, embedding, frequency_global)
-                        SELECT * FROM unnest($1::text[], $2::vector[], $3::int[])
+                        SELECT * FROM unnest(:keywords::text[], :embeddings::vector[], :frequencies::int[])
                         RETURNING id, keyword
-                    """, 
-                    [item[0] for item in insert_data],  # keywords
-                    [item[1] for item in insert_data],  # embeddings
-                    [item[2] for item in insert_data]   # frequencies
-                    )
+                    """), {
+                        'keywords': [item[0] for item in insert_data],
+                        'embeddings': [item[1] for item in insert_data],
+                        'frequencies': [item[2] for item in insert_data]
+                    })
+                    new_ids = result.fetchall()
                     
                     # 새로 생성된 ID를 결과에 반영
-                    new_id_map = {row['keyword']: row['id'] for row in new_ids}
+                    new_id_map = {row.keyword: row.id for row in new_ids}
                     
                     for i, keyword in enumerate(keywords):
                         if keyword_ids[i] is None and keyword in new_id_map:
@@ -140,16 +142,17 @@ class VectorProcessingService:
             target_embedding = await self.keyword_generator.generate_keyword_embedding(target_keyword)
             
             # 벡터 유사도 검색
-            similar_keywords = await self.db.fetch_all("""
+            result = await self.db.execute(text("""
                 SELECT 
                     keyword,
                     frequency_global,
-                    1 - (embedding <=> $1::vector) as similarity_score
+                    1 - (embedding <=> :embedding::vector) as similarity_score
                 FROM keywords
-                WHERE embedding <=> $1::vector < 0.5  -- 유사도 임계값
-                ORDER BY embedding <=> $1::vector
-                LIMIT $2
-            """, target_embedding, limit)
+                WHERE embedding <=> :embedding::vector < 0.5  -- 유사도 임계값
+                ORDER BY embedding <=> :embedding::vector
+                LIMIT :limit
+            """), {'embedding': target_embedding, 'limit': limit})
+            similar_keywords = result.fetchall()
             
             return [dict(row) for row in similar_keywords]
             
@@ -164,16 +167,17 @@ class VectorProcessingService:
             target_embedding = await self.category_generator.generate_category_embedding(target_category)
             
             # 벡터 유사도 검색
-            similar_categories = await self.db.fetch_all("""
+            result = await self.db.execute(text("""
                 SELECT 
                     name,
                     description,
-                    1 - (embedding <=> $1::vector) as similarity_score
+                    1 - (embedding <=> :embedding::vector) as similarity_score
                 FROM categories
-                WHERE embedding <=> $1::vector < 0.3  -- 더 엄격한 임계값
-                ORDER BY embedding <=> $1::vector
-                LIMIT $2
-            """, target_embedding, limit)
+                WHERE embedding <=> :embedding::vector < 0.3  -- 더 엄격한 임계값
+                ORDER BY embedding <=> :embedding::vector
+                LIMIT :limit
+            """), {'embedding': target_embedding, 'limit': limit})
+            similar_categories = result.fetchall()
             
             return [dict(row) for row in similar_categories]
             
@@ -185,20 +189,22 @@ class VectorProcessingService:
         """콘텐츠의 키워드와 카테고리 기반 임베딩 생성"""
         try:
             # 콘텐츠의 키워드들과 가중치 조회
-            keyword_data = await self.db.fetch_all("""
+            result = await self.db.execute(text("""
                 SELECT k.embedding, ck.relevance_score
                 FROM content_keywords ck
                 JOIN keywords k ON ck.keyword_id = k.id
-                WHERE ck.content_id = $1
-            """, content_id)
+                WHERE ck.content_id = :content_id
+            """), {'content_id': content_id})
+            keyword_data = result.fetchall()
             
             # 카테고리 임베딩 조회
-            category_data = await self.db.fetch_one("""
+            result = await self.db.execute(text("""
                 SELECT c.embedding
                 FROM summaries s
                 JOIN categories c ON s.category_id = c.id
-                WHERE s.id = $1
-            """, content_id)
+                WHERE s.id = :content_id
+            """), {'content_id': content_id})
+            category_data = result.first()
             
             if not keyword_data and not category_data:
                 logger.warning(f"No keywords or category found for content {content_id}")

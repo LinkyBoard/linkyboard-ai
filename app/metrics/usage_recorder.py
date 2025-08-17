@@ -12,7 +12,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal
 from app.core.models import UsageMeter
 from .wtu_calculator import calculate_wtu
 
@@ -68,7 +68,7 @@ async def record_usage(
     # 세션이 없으면 새로 생성
     close_session = False
     if session is None:
-        session = await get_db().__anext__()
+        session = AsyncSessionLocal()
         close_session = True
     
     try:
@@ -140,7 +140,7 @@ async def record_usage(
         raise
     finally:
         if close_session:
-            await session.close()
+            await session.aclose()
 
 
 async def record_embedding_usage(
@@ -225,7 +225,7 @@ async def get_monthly_usage(
     """
     close_session = False
     if session is None:
-        session = await get_db().__anext__()
+        session = AsyncSessionLocal()
         close_session = True
     
     try:
@@ -242,7 +242,7 @@ async def get_monthly_usage(
         return list(records)
     finally:
         if close_session:
-            await session.close()
+            await session.aclose()
 
 
 async def get_total_monthly_wtu(
@@ -289,7 +289,7 @@ async def get_usage_by_model(
     """
     close_session = False
     if session is None:
-        session = await get_db().__anext__()
+        session = AsyncSessionLocal()
         close_session = True
     
     try:
@@ -309,4 +309,4 @@ async def get_usage_by_model(
         return list(records)
     finally:
         if close_session:
-            await session.close()
+            await session.aclose()

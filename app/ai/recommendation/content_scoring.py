@@ -1,6 +1,7 @@
 import numpy as np
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
+from sqlalchemy import text
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -140,15 +141,16 @@ class ContentScoringService:
         """키워드 겹침 점수 계산"""
         try:
             # 콘텐츠의 키워드들과 사용자의 선호 키워드들 간 겹침 계산
-            overlap_data = await self.db.fetch_all("""
+            result = await self.db.execute(text("""
                 SELECT 
                     uk.preference_score,
                     uk.interaction_count,
                     ck.relevance_score
                 FROM content_keywords ck
                 JOIN user_keyword_interactions uk ON ck.keyword_id = uk.keyword_id
-                WHERE ck.content_id = $1 AND uk.user_id = $2
-            """, content_id, user_id)
+                WHERE ck.content_id = :content_id AND uk.user_id = :user_id
+            """), {'content_id': content_id, 'user_id': user_id})
+            overlap_data = result.fetchall()
             
             if not overlap_data:
                 return 0.0

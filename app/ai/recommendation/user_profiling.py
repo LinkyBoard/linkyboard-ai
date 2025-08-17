@@ -1,6 +1,7 @@
 import numpy as np
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
+from sqlalchemy import text
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -94,7 +95,7 @@ class UserProfilingService:
             decay_days = 30  # 30일 후 가중치 절반
             
             # 사용자가 상호작용한 키워드들과 선호도 조회
-            user_keywords = await self.db.fetch_all("""
+            query = text("""
                 SELECT 
                     k.embedding, 
                     uk.preference_score, 
@@ -103,8 +104,10 @@ class UserProfilingService:
                     EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - uk.last_interaction)) / (24 * 3600) as days_ago
                 FROM user_keyword_interactions uk
                 JOIN keywords k ON uk.keyword_id = k.id
-                WHERE uk.user_id = $1 AND uk.interaction_count > 0
-            """, user_id)
+                WHERE uk.user_id = :user_id AND uk.interaction_count > 0
+            """)
+            result = await self.db.execute(query, {"user_id": user_id})
+            user_keywords = result.fetchall()
             
             if not user_keywords:
                 logger.info(f"No keyword interactions found for user {user_id}")
@@ -145,7 +148,7 @@ class UserProfilingService:
     async def get_user_top_keywords(self, user_id: str, limit: int = 20) -> List[Dict]:
         """사용자 상위 선호 키워드 조회"""
         try:
-            top_keywords = await self.db.fetch_all("""
+            query = text("""
                 SELECT 
                     k.keyword,
                     uk.preference_score,
@@ -153,10 +156,12 @@ class UserProfilingService:
                     uk.last_interaction
                 FROM user_keyword_interactions uk
                 JOIN keywords k ON uk.keyword_id = k.id
-                WHERE uk.user_id = $1
+                WHERE uk.user_id = :user_id
                 ORDER BY uk.preference_score DESC, uk.interaction_count DESC
-                LIMIT $2
-            """, user_id, limit)
+                LIMIT :limit
+            """)
+            result = await self.db.execute(query, {"user_id": user_id, "limit": limit})
+            top_keywords = result.fetchall()
             
             return [dict(row) for row in top_keywords]
             
@@ -167,7 +172,7 @@ class UserProfilingService:
     async def get_user_top_categories(self, user_id: str, limit: int = 10) -> List[Dict]:
         """사용자 상위 선호 카테고리 조회"""
         try:
-            top_categories = await self.db.fetch_all("""
+            query = text("""
                 SELECT 
                     c.name,
                     ucp.preference_score,
@@ -175,10 +180,12 @@ class UserProfilingService:
                     ucp.last_used
                 FROM user_category_preferences ucp
                 JOIN categories c ON ucp.category_id = c.id
-                WHERE ucp.user_id = $1
+                WHERE ucp.user_id = :user_id
                 ORDER BY ucp.preference_score DESC, ucp.frequency_count DESC
-                LIMIT $2
-            """, user_id, limit)
+                LIMIT :limit
+            """)
+            result = await self.db.execute(query, {"user_id": user_id, "limit": limit})
+            top_categories = result.fetchall()
             
             return [dict(row) for row in top_categories]
             
@@ -190,16 +197,18 @@ class UserProfilingService:
         """사용자 관심사 다양성 점수 계산"""
         try:
             # 사용자가 상호작용한 카테고리 수와 분포도 계산
-            category_distribution = await self.db.fetch_all("""
+            query = text("""
                 SELECT 
                     c.name,
                     ucp.preference_score,
                     ucp.frequency_count
                 FROM user_category_preferences ucp
                 JOIN categories c ON ucp.category_id = c.id
-                WHERE ucp.user_id = $1
+                WHERE ucp.user_id = :user_id
                 ORDER BY ucp.preference_score DESC
-            """, user_id)
+            """)
+            result = await self.db.execute(query, {"user_id": user_id})
+            category_distribution = result.fetchall()
             
             if len(category_distribution) <= 1:
                 return 0.0  # 다양성 없음
