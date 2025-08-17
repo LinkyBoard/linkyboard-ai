@@ -134,14 +134,12 @@ async def estimate_budget(
     """
     try:
         from app.metrics.model_catalog_service import model_catalog_service
-        from app.metrics.model_policy_service import model_policy_service
         from app.metrics import count_tokens
         
-        # 사용 가능한 모델 목록 조회
-        available_models = await model_policy_service.get_available_models(
-            board_id=request.board_id,
-            user_id=request.user_id,
-            model_type="llm"
+        # LLM 모델만 조회 (임베딩 모델 제외)
+        available_models = await model_catalog_service.get_active_models(
+            model_type="llm",
+            session=session
         )
         
         estimates = []
@@ -149,11 +147,10 @@ async def estimate_budget(
             # 토큰 수 계산
             input_tokens = count_tokens(request.input_text, model.model_name)
             
-            # 예상 WTU 계산
-            estimated_wtu = await model_policy_service.estimate_wtu_cost(
-                model=model,
-                estimated_input_tokens=input_tokens,
-                estimated_output_tokens=request.estimated_output_tokens
+            # 간단한 WTU 계산 (weight 정보 활용)
+            estimated_wtu = int(
+                input_tokens * (model.weight_input or 1.0) + 
+                request.estimated_output_tokens * (model.weight_output or 4.0)
             )
             
             estimates.append({
@@ -182,21 +179,21 @@ async def estimate_budget(
 async def get_available_models(
     board_id: UUID,
     user_id: int,
-    model_type: str = "llm",
+    model_type: str = "llm",  # 기본값을 LLM으로 고정, 임베딩 모델은 사용자 선택에서 제외
     session: AsyncSession = Depends(get_db)
 ):
     """
-    사용 가능한 모델 목록 조회
+    사용 가능한 모델 목록 조회 (LLM만, 임베딩 모델 제외)
     
     보드/사용자 정책에 따라 사용 가능한 모델 목록을 반환합니다.
     """
     try:
-        from app.metrics.model_policy_service import model_policy_service
+        from app.metrics.model_catalog_service import model_catalog_service
         
-        models = await model_policy_service.get_available_models(
-            board_id=board_id,
-            user_id=user_id,
-            model_type=model_type
+        # LLM 모델만 조회 (임베딩 모델 제외)
+        models = await model_catalog_service.get_active_models(
+            model_type="llm",
+            session=session
         )
         
         return {
