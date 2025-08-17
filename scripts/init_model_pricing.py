@@ -31,16 +31,16 @@ async def main():
         # 현재 등록된 모델들 출력
         async for session in get_db():
             from sqlalchemy import select
-            from app.core.models import ModelPricing
+            from app.core.models import ModelCatalog
             
-            stmt = select(ModelPricing).where(ModelPricing.is_active == True)
+            stmt = select(ModelCatalog).where(ModelCatalog.is_active == True)
             result = await session.execute(stmt)
             models = result.scalars().all()
             
             logger.info(f"등록된 모델 수: {len(models)}")
             for model in models:
                 logger.info(
-                    f"  - {model.model_name} ({model.model_type}): "
+                    f"  - {model.alias} ({model.model_name}, {model.model_type}): "
                     f"가중치 입력={model.weight_input}, 출력={model.weight_output}, "
                     f"임베딩={model.weight_embedding}"
                 )

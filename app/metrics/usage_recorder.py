@@ -49,7 +49,7 @@ async def record_embedding_usage(
     
     try:
         # WTU 계산
-        wtu = await calculate_embedding_wtu(embed_tokens, embedding_model)
+        wtu, estimated_cost_from_wtu = await calculate_embedding_wtu(embed_tokens, embedding_model)
         
         # 추정 비용 계산 (USD)
         # text-embedding-3-small: $0.02 per 1M tokens
@@ -133,7 +133,7 @@ async def record_llm_usage(
     
     try:
         # WTU 계산
-        wtu = await calculate_llm_wtu(in_tokens, out_tokens, llm_model, cached_in_tokens)
+        wtu, estimated_cost_from_wtu = await calculate_llm_wtu(in_tokens, out_tokens, cached_in_tokens, llm_model)
         
         # 추정 비용 계산 (USD)
         # gpt-4o-mini: $0.15 per 1M input tokens, $0.60 per 1M output tokens

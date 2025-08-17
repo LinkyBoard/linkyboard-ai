@@ -12,6 +12,8 @@ from app.with_ai.service import with_ai_service
 from app.with_ai.schemas import (
     AskRequest,
     AskResponse,
+    AskWithItemsRequest,
+    AskWithItemsResponse,
     DraftRequest,
     DraftResponse,
     ModelBudgetRequest,
@@ -70,6 +72,45 @@ async def ask_with_model(
     except Exception as e:
         logger.error(f"Ask request failed: {str(e)}")
         raise HTTPException(status_code=500, detail="AI 질의 처리 중 오류가 발생했습니다.")
+
+
+@router.post("/ask-with-items", response_model=AskWithItemsResponse)
+async def ask_with_items(
+    request: AskWithItemsRequest,
+    session: AsyncSession = Depends(get_db)
+):
+    """
+    선택된 아이템들을 기반으로 한 AI 질의
+    
+    사용자가 보드에서 특정 아이템들을 선택하고, 이를 기반으로 AI 작업을 수행합니다.
+    아이템의 내용(요약/전체)을 포함하여 사용자가 지정한 작업을 처리합니다.
+    """
+    try:
+        logger.info(f"AI ask-with-items request - user: {request.user_id}, board: {request.board_id}, items: {len(request.selected_items)}")
+        
+        result = await with_ai_service.ask_with_selected_items(
+            query=request.query,
+            instruction=request.instruction,
+            selected_items=request.selected_items,
+            board_id=request.board_id,
+            user_id=request.user_id,
+            max_out_tokens=request.max_out_tokens,
+            model=request.model,
+            budget_wtu=request.budget_wtu,
+            confidence_target=request.confidence_target
+        )
+        
+        return AskWithItemsResponse(**result)
+        
+    except ValueError as e:
+        logger.warning(f"Ask-with-items request validation failed: {str(e)}")
+        if "budget" in str(e).lower() or "exceeded" in str(e).lower():
+            raise HTTPException(status_code=403, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Ask-with-items request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="아이템 기반 AI 질의 처리 중 오류가 발생했습니다.")
 
 
 @router.post("/draft", response_model=DraftResponse)
