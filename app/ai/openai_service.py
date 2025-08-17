@@ -206,6 +206,108 @@ class OpenAIService:
         except Exception as e:
             logger.bind(ai=True).error(f"Failed to generate summary for {url}: {str(e)}")
             raise Exception(f"OpenAI API 호출 중 오류: {str(e)}")
+
+    async def generate_chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        model: str = None,
+        max_tokens: int = 1000,
+        temperature: float = 0.7,
+        user_id: int = None,
+        board_id: str = None
+    ) -> Dict[str, Any]:
+        """
+        일반적인 채팅 완성 생성 (Model Picker v1용)
+        
+        Args:
+            messages: 채팅 메시지 리스트 [{"role": "user", "content": "..."}]
+            model: 사용할 모델명 (기본값: settings.OPENAI_MODEL)
+            max_tokens: 최대 출력 토큰 수
+            temperature: 창의성 정도 (0.0~1.0)
+            user_id: 사용자 ID (WTU 계측용)
+            board_id: 보드 ID (정책 추적용)
+            
+        Returns:
+            {
+                "content": "AI 응답 내용",
+                "input_tokens": 입력 토큰 수,
+                "output_tokens": 출력 토큰 수,
+                "model_used": "실제 사용된 모델명"
+            }
+        """
+        if not model:
+            model = settings.OPENAI_MODEL
+            
+        async with trace_ai_operation(
+            model=model,
+            operation="chat_completion",
+            user_id=user_id or "unknown",
+            board_id=board_id or "unknown"
+        ) as span:
+            try:
+                logger.bind(ai=True).info(f"Generating chat completion with model: {model}")
+                
+                # 입력 토큰 수 계산
+                full_prompt = "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
+                input_tokens = count_tokens(full_prompt, model)
+                logger.bind(ai=True).info(f"Estimated input tokens: {input_tokens}")
+                span.set_attribute("ai.input_tokens", input_tokens)
+                span.set_attribute("ai.model", model)
+                
+                response = await self.client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature
+                )
+                
+                content = response.choices[0].message.content
+                output_tokens = count_tokens(content, model)
+                
+                span.set_attribute("ai.output_tokens", output_tokens)
+                span.set_attribute("ai.response_length", len(content))
+                
+                # 관측성 메트릭 기록
+                record_ai_tokens(model, input_tokens=input_tokens, output_tokens=output_tokens)
+                
+                # WTU 사용량 기록 (user_id가 있을 때만)
+                if user_id:
+                    try:
+                        await record_llm_usage(
+                            user_id=user_id,
+                            in_tokens=input_tokens,
+                            out_tokens=output_tokens,
+                            llm_model=model,
+                            board_id=board_id
+                        )
+                        
+                        # WTU 계산 및 기록
+                        from app.metrics import calculate_wtu
+                        wtu_amount, _ = await calculate_wtu(
+                            in_tokens=input_tokens,
+                            out_tokens=output_tokens,
+                            llm_model=model
+                        )
+                        record_wtu_usage(user_id, model, wtu_amount)
+                        span.set_attribute("ai.wtu_consumed", wtu_amount)
+                        
+                        logger.bind(ai=True).info(f"WTU usage recorded for user {user_id}: {input_tokens} input + {output_tokens} output tokens = {wtu_amount} WTU")
+                    except Exception as wtu_error:
+                        logger.bind(ai=True).warning(f"Failed to record WTU usage: {wtu_error}")
+                
+                logger.bind(ai=True).info(f"Generated chat completion: {len(content)} chars")
+                
+                return {
+                    "content": content,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "model_used": model
+                }
+                
+            except Exception as e:
+                span.set_attribute("ai.error", str(e))
+                logger.bind(ai=True).error(f"Failed to generate chat completion: {str(e)}")
+                raise Exception(f"OpenAI API 호출 중 오류: {str(e)}")
     
     def _extract_text_from_html(self, html_content: str) -> str:
         """HTML에서 텍스트 추출"""

@@ -4,7 +4,7 @@ With AI Router - 모델 선택 지원 AI 질의 엔드포인트
 
 from typing import Optional, List
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, Form, Depends
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.logging import get_logger
@@ -36,14 +36,7 @@ router = APIRouter(
 
 @router.post("/ask", response_model=AskResponse)
 async def ask_with_model(
-    query: str = Form(..., description="질의 내용"),
-    board_id: UUID = Form(..., description="보드 ID"),
-    user_id: int = Form(..., description="사용자 ID"),
-    k: int = Form(default=4, description="검색 결과 수"),
-    max_out_tokens: int = Form(default=800, description="최대 출력 토큰 수"),
-    model: Optional[str] = Form(None, description="사용할 AI 모델 (별칭)"),
-    budget_wtu: Optional[int] = Form(None, description="예산 WTU 제한"),
-    confidence_target: Optional[float] = Form(None, description="품질 목표 (0.0-1.0)"),
+    request: AskRequest,
     session: AsyncSession = Depends(get_db)
 ):
     """
@@ -53,17 +46,17 @@ async def ask_with_model(
     WTU 예산 및 정책 제한을 확인하여 안전하게 실행됩니다.
     """
     try:
-        logger.info(f"AI ask request - user: {user_id}, board: {board_id}, model: {model}")
+        logger.info(f"AI ask request - user: {request.user_id}, board: {request.board_id}, model: {request.model}")
         
         result = await with_ai_service.ask_with_model_selection(
-            query=query,
-            board_id=board_id,
-            user_id=user_id,
-            k=k,
-            max_out_tokens=max_out_tokens,
-            model=model,
-            budget_wtu=budget_wtu,
-            confidence_target=confidence_target
+            query=request.query,
+            board_id=request.board_id,
+            user_id=request.user_id,
+            k=request.k,
+            max_out_tokens=request.max_out_tokens,
+            model=request.model,
+            budget_wtu=request.budget_wtu,
+            confidence_target=request.confidence_target
         )
         
         return AskResponse(**result)
@@ -81,13 +74,7 @@ async def ask_with_model(
 
 @router.post("/draft", response_model=DraftResponse)
 async def draft_with_model(
-    outline: List[str] = Form(..., description="초안 개요"),
-    board_id: UUID = Form(..., description="보드 ID"),
-    user_id: int = Form(..., description="사용자 ID"),
-    max_out_tokens: int = Form(default=1500, description="최대 출력 토큰 수"),
-    model: Optional[str] = Form(None, description="사용할 AI 모델 (별칭)"),
-    budget_wtu: Optional[int] = Form(None, description="예산 WTU 제한"),
-    confidence_target: Optional[float] = Form(None, description="품질 목표 (0.0-1.0)"),
+    request: DraftRequest,
     session: AsyncSession = Depends(get_db)
 ):
     """
@@ -97,16 +84,16 @@ async def draft_with_model(
     WTU 예산 및 정책 제한을 확인하여 안전하게 실행됩니다.
     """
     try:
-        logger.info(f"AI draft request - user: {user_id}, board: {board_id}, model: {model}")
+        logger.info(f"AI draft request - user: {request.user_id}, board: {request.board_id}, model: {request.model}")
         
         result = await with_ai_service.draft_with_model_selection(
-            outline=outline,
-            board_id=board_id,
-            user_id=user_id,
-            max_out_tokens=max_out_tokens,
-            model=model,
-            budget_wtu=budget_wtu,
-            confidence_target=confidence_target
+            outline=request.outline,
+            board_id=request.board_id,
+            user_id=request.user_id,
+            max_out_tokens=request.max_out_tokens,
+            model=request.model,
+            budget_wtu=request.budget_wtu,
+            confidence_target=request.confidence_target
         )
         
         return DraftResponse(**result)
