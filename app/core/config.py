@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     LOG_ROTATION: str = "100 MB"
     LOG_FORMAT: str = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}"
     
+    # WTU 계측 설정
+    WTU_ALPHA_EMBED: float = 0.8  # 임베딩 토큰 가중치
+    
+    # 중복 탐지 설정
+    SIMHASH_HD_THR: int = 6  # SimHash Hamming Distance 임계값
+    DEDUP_TOPK: int = 10  # 중복 후보 최대 수
+    
     @field_validator("POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB")
     @classmethod
     def validate_required_fields(cls, v, info):

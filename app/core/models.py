@@ -1,7 +1,9 @@
-from sqlalchemy import JSON, Column, String, Text, DateTime, Integer, Boolean, ForeignKey, Index, Float
+from sqlalchemy import JSON, Column, String, Text, DateTime, Integer, Boolean, ForeignKey, Index, Float, Date, ARRAY
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship, validates
 from pgvector.sqlalchemy import Vector
+import uuid
 
 from app.core.database import Base
 
@@ -167,6 +169,10 @@ class Item(Base):
     # 원본 콘텐츠 저장 (타입별로 다름)
     raw_content = Column(Text, nullable=True, comment="원본 콘텐츠 (HTML, 텍스트, 메타데이터 등)")
     content_metadata = Column(Text, nullable=True, comment="콘텐츠 메타데이터 (JSON 형태)")
+    
+    # FTS (Full Text Search) 컬럼 - 중복 탐지용
+    # PostgreSQL에서 Generated 컬럼으로 생성됨 (마이그레이션에서 처리)
+    # fts = Column(TSVector, nullable=True, comment="전문검색용 tsvector (title + description + summary)")
     
     # 벡터 임베딩 (pgvector) - 의미 검색용
     embedding_chunks = relationship("ItemEmbeddingMetadata", back_populates="item", cascade="all, delete-orphan")
@@ -351,3 +357,143 @@ class SearchHistory(Base):
 
     def __repr__(self):
         return f"<SearchHistory(id={self.id}, query='{self.query}', type='{self.search_type}', results={self.result_count})>"
+
+
+class UsageMeter(Base):
+    """WTU 사용량 계측 테이블"""
+    __tablename__ = "usage_meter"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="사용량 기록 ID")
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, comment="사용자 ID")
+    run_id = Column(UUID(as_uuid=True), nullable=True, comment="실행 ID (배치 작업 시)")
+    
+    # 사용된 모델 정보
+    llm_model = Column(String(100), nullable=True, comment="사용된 LLM 모델명")
+    embedding_model = Column(String(100), nullable=True, comment="사용된 임베딩 모델명")
+    
+    # 토큰 사용량
+    in_tokens = Column(Integer, default=0, nullable=False, comment="입력 토큰 수")
+    cached_in_tokens = Column(Integer, default=0, nullable=False, comment="캐시된 입력 토큰 수")
+    out_tokens = Column(Integer, default=0, nullable=False, comment="출력 토큰 수")
+    embed_tokens = Column(Integer, default=0, nullable=False, comment="임베딩 토큰 수")
+    
+    # WTU 계산값
+    wtu = Column(Integer, default=0, nullable=False, comment="계산된 WTU 값")
+    
+    # 비용 정보 (참고용)
+    estimated_cost_usd = Column(Float, nullable=True, comment="추정 비용 (USD)")
+    
+    # 계획 월 (해당 월의 첫째 날)
+    plan_month = Column(Date, nullable=False, comment="계획 월 (YYYY-MM-01)")
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
+    
+    # 관계 설정
+    user = relationship("User")
+    
+    __table_args__ = (
+        Index('ix_usage_meter_plan_month', 'plan_month'),
+        Index('ix_usage_meter_user_plan_month', 'user_id', 'plan_month'),
+        Index('ix_usage_meter_created_at', 'created_at'),
+        Index('ix_usage_meter_llm_model', 'llm_model'),
+        Index('ix_usage_meter_embedding_model', 'embedding_model'),
+    )
+
+    def __repr__(self):
+        return f"<UsageMeter(user_id={self.user_id}, wtu={self.wtu}, plan_month={self.plan_month})>"
+
+
+class DedupSuggestion(Base):
+    """중복 후보 제안 테이블"""
+    __tablename__ = "dedup_suggestion"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="중복 제안 ID")
+    board_id = Column(UUID(as_uuid=True), nullable=False, comment="보드 ID")  # 추후 Board 테이블 생성 시 외래키로 변경
+    
+    # 중복 후보 문서 ID 배열
+    doc_ids = Column(ARRAY(UUID(as_uuid=True)), nullable=False, comment="중복 후보 문서 ID 배열 (최소 2개)")
+    
+    # 유사도 점수 (BM25 기반 정규화)
+    score = Column(Float, nullable=False, comment="유사도 점수 (0.0-1.0)")
+    
+    # 사용자 수락 여부
+    accepted = Column(Boolean, default=False, nullable=False, comment="사용자 수락 여부")
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
+    
+    __table_args__ = (
+        Index('ix_dedup_suggestion_board_created', 'board_id', 'created_at'),
+        Index('ix_dedup_suggestion_score', 'score'),
+        Index('ix_dedup_suggestion_accepted', 'accepted'),
+    )
+
+    def __repr__(self):
+        return f"<DedupSuggestion(board_id={self.board_id}, docs={len(self.doc_ids)}, score={self.score:.2f})>"
+
+
+class ModelPricing(Base):
+    """모델별 가격 정보 및 WTU 가중치 테이블"""
+    __tablename__ = "model_pricing"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="가격 정보 ID")
+    model_name = Column(String(100), nullable=False, unique=True, comment="모델명 (예: gpt-3.5-turbo, text-embedding-3-small)")
+    model_type = Column(String(20), nullable=False, comment="모델 유형: llm, embedding")
+    
+    # 원본 가격 정보 (USD per 1M tokens)
+    price_input = Column(Float, nullable=True, comment="입력 토큰 가격 (USD/1M)")
+    price_output = Column(Float, nullable=True, comment="출력 토큰 가격 (USD/1M)")
+    price_embedding = Column(Float, nullable=True, comment="임베딩 가격 (USD/1M)")
+    
+    # 계산된 WTU 가중치 (reference 모델 대비)
+    weight_input = Column(Float, nullable=True, comment="입력 토큰 WTU 가중치")
+    weight_output = Column(Float, nullable=True, comment="출력 토큰 WTU 가중치")
+    weight_embedding = Column(Float, nullable=True, comment="임베딩 토큰 WTU 가중치")
+    
+    # 기준 모델 정보
+    reference_model = Column(String(100), nullable=False, default="gpt-5-mini", comment="기준 모델명")
+    reference_price_input = Column(Float, nullable=False, default=0.25, comment="기준 입력 가격 (USD/1M)")
+    reference_price_output = Column(Float, nullable=False, default=2.00, comment="기준 출력 가격 (USD/1M)")
+    
+    # 설정값
+    cached_factor = Column(Float, nullable=False, default=0.1, comment="캐시 토큰 할인율")
+    embedding_alpha = Column(Float, nullable=False, default=0.8, comment="임베딩 가중치 조정 계수")
+    
+    # 상태 관리
+    is_active = Column(Boolean, default=True, nullable=False, comment="활성 상태")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True, comment="수정일시")
+    
+    __table_args__ = (
+        Index('ix_model_pricing_name', 'model_name'),
+        Index('ix_model_pricing_type', 'model_type'),
+        Index('ix_model_pricing_active', 'is_active'),
+    )
+
+    def __repr__(self):
+        return f"<ModelPricing(model={self.model_name}, type={self.model_type}, active={self.is_active})>"
+    
+    def calculate_weights(self) -> None:
+        """기준 모델 대비 WTU 가중치 계산"""
+        # 기본값이 None인 경우 기본값으로 설정
+        if self.reference_price_input is None:
+            self.reference_price_input = 0.25
+        if self.reference_price_output is None:
+            self.reference_price_output = 2.00
+        if self.embedding_alpha is None:
+            self.embedding_alpha = 0.8
+        if self.cached_factor is None:
+            self.cached_factor = 0.1
+            
+        if self.model_type == "llm":
+            if self.price_input is not None:
+                self.weight_input = self.price_input / self.reference_price_input
+            if self.price_output is not None:
+                self.weight_output = 8.0 * (self.price_output / self.reference_price_output)
+        elif self.model_type == "embedding":
+            if self.price_embedding is not None:
+                self.weight_embedding = self.embedding_alpha * (self.price_embedding / self.reference_price_input)
+    
+    @property
+    def weight_cached_input(self) -> float:
+        """캐시된 입력 토큰의 가중치"""
+        return (self.weight_input or 0) * self.cached_factor
