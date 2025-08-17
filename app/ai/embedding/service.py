@@ -15,6 +15,7 @@ from app.ai.embedding.generators.openai_generator import OpenAIEmbeddingGenerato
 from app.ai.embedding.repository import EmbeddingRepository
 from app.core.repository import ItemRepository
 from app.core.logging import get_logger
+from app.observability import trace_embedding_generation, record_ai_tokens
 
 logger = get_logger(__name__)
 
@@ -51,121 +52,149 @@ class EmbeddingService:
         content_type: str = "html",
         chunking_strategy: str = "token_based",
         embedding_generator: str = "openai",
-        max_chunk_size: int = 8000
+        max_chunk_size: int = 8000,
+        user_id: int = None  # WTU 계측을 위한 사용자 ID
     ) -> List[EmbeddingResult]:
         """
-        전체 임베딩 생성 프로세스 실행
+        전체 임베딩 생성 프로세스 실행 (관측성 포함)
         """
-        start_time = datetime.now()
-        logger.bind(
-            task_type="embedding",
+        async with trace_embedding_generation(
             item_id=item_id,
+            content_length=len(content),
             content_type=content_type,
             chunking_strategy=chunking_strategy,
-            embedding_generator=embedding_generator
-        ).info(f"Starting embedding creation for item {item_id}")
-        
-        try:
-            # 1. 상태 업데이트 - 처리 시작
-            await self.item_repository.update_processing_status(
-                session, item_id, "processing"
-            )
-            
-            # 2. 콘텐츠 전처리
-            processor = self._get_processor(content_type)
-            processed_content = await processor.process(content)
-            
-            logger.info(f"Content processed: {len(content)} -> {len(processed_content)} chars")
-            logger.info(f"Max chunk size: {max_chunk_size}")
-            
-            # 콘텐츠가 너무 짧은 경우 확인
-            if len(processed_content) <= max_chunk_size:
-                logger.info(f"Content length ({len(processed_content)}) is within single chunk size ({max_chunk_size})")
-            else:
-                logger.info(f"Content will be chunked: {len(processed_content)} chars > {max_chunk_size} max_chunk_size")
-            
-            # 3. 청킹
-            chunker = self._get_chunking_strategy(chunking_strategy)
-            chunks = await chunker.chunk(processed_content, max_chunk_size)
-            
-            logger.info(f"Content chunked into {len(chunks)} pieces")
-            
-            # 각 청크 크기 로깅
-            for i, chunk in enumerate(chunks):
-                logger.info(f"Chunk {i}: {len(chunk.content)} chars, start: {chunk.start_position}, end: {chunk.end_position}")
-            
-            # 4. 임베딩 생성
-            generator = self._get_embedding_generator(embedding_generator)
-            embedding_results = []
-            
-            for chunk in chunks:
-                try:
-                    embedding_vector = await generator.generate(chunk.content)
-                    
-                    result = EmbeddingResult(
-                        chunk_data=chunk,
-                        embedding_vector=embedding_vector,
-                        model_name=generator.get_model_name(),
-                        model_version=generator.get_model_version()
-                    )
-                    embedding_results.append(result)
-                    
-                    logger.debug(f"Generated embedding for chunk {chunk.chunk_number}")
-                    
-                except Exception as e:
-                    logger.error(f"Failed to generate embedding for chunk {chunk.chunk_number}: {str(e)}")
-                    # 개별 청크 실패 시 전체를 실패시키지 않고 계속 진행
-                    continue
-            
-            if not embedding_results:
-                raise Exception("No embeddings were generated successfully")
-            
-            # 5. 데이터베이스 저장
-            saved_embeddings = await self.embedding_repository.save_embeddings(
-                session, item_id, embedding_results
-            )
-            
-            # 6. 상태 업데이트 - 완료
-            await self.item_repository.update_processing_status(
-                session, item_id, "completed"
-            )
-            
-            # 성공 로깅
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
-            
+            embedding_generator=embedding_generator,
+            user_id=user_id or "unknown"
+        ) as span:
+            start_time = datetime.now()
             logger.bind(
                 task_type="embedding",
                 item_id=item_id,
-                status="completed",
-                duration_seconds=duration,
-                chunks_created=len(embedding_results),
-                total_embeddings=len(saved_embeddings)
-            ).info(f"Embedding creation completed for item {item_id} in {duration:.2f}s")
+                content_type=content_type,
+                chunking_strategy=chunking_strategy,
+                embedding_generator=embedding_generator
+            ).info(f"Starting embedding creation for item {item_id}")
             
-            return embedding_results
-            
-        except Exception as e:
-            # 실패 처리
             try:
+                # 1. 상태 업데이트 - 처리 시작
                 await self.item_repository.update_processing_status(
-                    session, item_id, "failed"
+                    session, item_id, "processing"
                 )
-            except Exception as db_error:
-                logger.error(f"Failed to update error status: {str(db_error)}")
-            
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
-            
-            logger.bind(
-                task_type="embedding",
-                item_id=item_id,
-                status="failed",
-                error=str(e),
-                duration_seconds=duration
-            ).error(f"Embedding creation failed for item {item_id}: {str(e)}")
-            
-            raise
+                
+                # 2. 콘텐츠 전처리
+                processor = self._get_processor(content_type)
+                processed_content = await processor.process(content)
+                
+                logger.info(f"Content processed: {len(content)} -> {len(processed_content)} chars")
+                logger.info(f"Max chunk size: {max_chunk_size}")
+                span.set_attribute("embedding.processed_content_length", len(processed_content))
+                
+                # 콘텐츠가 너무 짧은 경우 확인
+                if len(processed_content) <= max_chunk_size:
+                    logger.info(f"Content length ({len(processed_content)}) is within single chunk size ({max_chunk_size})")
+                else:
+                    logger.info(f"Content will be chunked: {len(processed_content)} chars > {max_chunk_size} max_chunk_size")
+                
+                # 3. 청킹
+                chunker = self._get_chunking_strategy(chunking_strategy)
+                chunks = await chunker.chunk(processed_content, max_chunk_size)
+                
+                logger.info(f"Content chunked into {len(chunks)} pieces")
+                span.set_attribute("embedding.chunk_count", len(chunks))
+                
+                # 각 청크 크기 로깅
+                for i, chunk in enumerate(chunks):
+                    logger.info(f"Chunk {i}: {len(chunk.content)} chars, start: {chunk.start_position}, end: {chunk.end_position}")
+                
+                # 4. 임베딩 생성
+                generator = self._get_embedding_generator(embedding_generator)
+                embedding_results = []
+                total_embed_tokens = 0
+                
+                for chunk in chunks:
+                    try:
+                        # user_id를 generator에 전달하여 WTU 계측 가능하게 함
+                        embedding_vector = await generator.generate(chunk.content, user_id=user_id)
+                        
+                        result = EmbeddingResult(
+                            chunk_data=chunk,
+                            embedding_vector=embedding_vector,
+                            model_name=generator.get_model_name(),
+                            model_version=generator.get_model_version()
+                        )
+                        embedding_results.append(result)
+                        
+                        # 토큰 수 추정 (관측성 메트릭용)
+                        from app.metrics import count_tokens
+                        chunk_tokens = count_tokens(chunk.content, generator.get_model_name())
+                        total_embed_tokens += chunk_tokens
+                        
+                        logger.debug(f"Generated embedding for chunk {chunk.chunk_number}")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to generate embedding for chunk {chunk.chunk_number}: {str(e)}")
+                        # 개별 청크 실패 시 전체를 실패시키지 않고 계속 진행
+                        continue
+                
+                if not embedding_results:
+                    raise Exception("No embeddings were generated successfully")
+                
+                # 관측성 메트릭 기록
+                record_ai_tokens(generator.get_model_name(), embed_tokens=total_embed_tokens)
+                span.set_attribute("embedding.total_tokens", total_embed_tokens)
+                
+                # 5. 데이터베이스 저장
+                saved_embeddings = await self.embedding_repository.save_embeddings(
+                    session, item_id, embedding_results
+                )
+                
+                # 6. 상태 업데이트 - 완료
+                await self.item_repository.update_processing_status(
+                    session, item_id, "completed"
+                )
+                
+                # 성공 로깅
+                end_time = datetime.now()
+                duration = (end_time - start_time).total_seconds()
+                
+                span.set_attribute("embedding.embeddings_saved", len(saved_embeddings))
+                span.set_attribute("embedding.success", True)
+                
+                logger.bind(
+                    task_type="embedding",
+                    item_id=item_id,
+                    status="completed",
+                    duration_seconds=duration,
+                    chunks_created=len(embedding_results),
+                    total_embeddings=len(saved_embeddings)
+                ).info(f"Embedding creation completed for item {item_id} in {duration:.2f}s")
+                
+                return embedding_results
+                
+            except Exception as e:
+                # 실패 처리
+                span.set_attribute("embedding.success", False)
+                span.set_attribute("embedding.error", str(e))
+                
+                try:
+                    await self.item_repository.update_processing_status(
+                        session, item_id, "failed"
+                    )
+                except Exception as db_error:
+                    logger.error(f"Failed to update error status: {str(db_error)}")
+                
+                end_time = datetime.now()
+                duration = (end_time - start_time).total_seconds()
+                
+                logger.bind(
+                    task_type="embedding",
+                    item_id=item_id,
+                    status="failed",
+                    error=str(e),
+                    duration_seconds=duration
+                ).error(f"Embedding creation failed for item {item_id}: {str(e)}")
+                
+                raise
     
     async def get_embedding_status(
         self, 

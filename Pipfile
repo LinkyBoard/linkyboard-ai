@@ -16,6 +16,9 @@ pydantic-settings = "*"
 python-multipart = "*"
 openai = "*"
 loguru = "*"
+opentelemetry-api = "*"
+opentelemetry-sdk = "*"
+prometheus-client = "*"
 
 [dev-packages]
 pytest = "*"

@@ -2,6 +2,8 @@ import openai
 from typing import List, Dict, Any
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.metrics import count_tokens, record_text_generation_usage
+from app.observability import trace_ai_operation, record_ai_tokens, record_wtu_usage
 
 logger = get_logger(__name__)
 
@@ -18,50 +20,99 @@ class OpenAIService:
         summary: str,
         similar_tags: List[str] = None,
         tag_count: int = 5,
-        max_tokens: int = 100
+        max_tokens: int = 100,
+        user_id: int = None  # WTU 계측을 위한 사용자 ID
     ) -> List[str]:
-        """웹페이지 태그 생성"""
-        try:
-            logger.bind(ai=True).info(f"Generating tags for summary (length: {len(summary)})")
-            
-            prompt = f"""
-            다음 웹페이지 내용을 분석하여 {tag_count}개의 태그를 생성해주세요.
-            바로 저장할 수 있도록 응답은 태그만 작성해주세요.
-            각 태그는 쉼표로 구분해주세요.
-            태그는 한글 또는 영어의 명사형 단어로 작성해주세요.
-            사용자가 이전에 저장한 유사 태그가 있다면, 그 태그도 함께 고려해주세요.
-            {', '.join(similar_tags) if similar_tags else '없음'}
-            
-            summary: {summary}
-            """
-            
-            response = await self.client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": "당신은 웹페이지 내용을 분석하는 전문가입니다."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=max_tokens,
-                temperature=0.3
-            )
-            
-            content = response.choices[0].message.content
-            tags = [k.strip() for k in content.split(',') if k.strip()]
-            
-            logger.bind(ai=True).info(f"Generated {len(tags)} tags: {tags}")
-            return tags
-            
-        except Exception as e:
-            logger.bind(ai=True).error(f"Failed to generate tags: {str(e)}")
-            raise Exception(f"OpenAI API 호출 중 오류: {str(e)}")
+        """웹페이지 태그 생성 (WTU 계측 + 관측성 포함)"""
+        async with trace_ai_operation(
+            model=settings.OPENAI_MODEL, 
+            operation="tag_generation",
+            summary_length=len(summary),
+            tag_count=tag_count,
+            user_id=user_id or "unknown"
+        ) as span:
+            try:
+                logger.bind(ai=True).info(f"Generating tags for summary (length: {len(summary)})")
+                
+                prompt = f"""
+                다음 웹페이지 내용을 분석하여 {tag_count}개의 태그를 생성해주세요.
+                바로 저장할 수 있도록 응답은 태그만 작성해주세요.
+                각 태그는 쉼표로 구분해주세요.
+                태그는 한글 또는 영어의 명사형 단어로 작성해주세요.
+                사용자가 이전에 저장한 유사 태그가 있다면, 그 태그도 함께 고려해주세요.
+                {', '.join(similar_tags) if similar_tags else '없음'}
+                
+                summary: {summary}
+                """
+                
+                system_msg = "당신은 웹페이지 내용을 분석하는 전문가입니다."
+                
+                # 토큰 수 계산 (요청 전)
+                input_tokens = count_tokens(system_msg + prompt, settings.OPENAI_MODEL)
+                logger.bind(ai=True).info(f"Estimated input tokens: {input_tokens}")
+                span.set_attribute("ai.input_tokens", input_tokens)
+                
+                response = await self.client.chat.completions.create(
+                    model=settings.OPENAI_MODEL,
+                    messages=[
+                        {"role": "system", "content": system_msg},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=max_tokens,
+                    temperature=0.3
+                )
+                
+                content = response.choices[0].message.content
+                tags = [k.strip() for k in content.split(',') if k.strip()]
+                
+                # 출력 토큰 수 계산
+                output_tokens = count_tokens(content, settings.OPENAI_MODEL)
+                span.set_attribute("ai.output_tokens", output_tokens)
+                span.set_attribute("ai.tags_generated", len(tags))
+                
+                # 관측성 메트릭 기록
+                record_ai_tokens(settings.OPENAI_MODEL, input_tokens=input_tokens, output_tokens=output_tokens)
+                
+                # WTU 사용량 기록 (user_id가 있을 때만)
+                if user_id:
+                    try:
+                        await record_text_generation_usage(
+                            user_id=user_id,
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            model=settings.OPENAI_MODEL
+                        )
+                        # WTU도 관측성 메트릭에 기록
+                        from app.metrics import calculate_wtu
+                        wtu_amount, _ = await calculate_wtu(
+                            in_tokens=input_tokens, 
+                            out_tokens=output_tokens, 
+                            llm_model=settings.OPENAI_MODEL
+                        )
+                        record_wtu_usage(user_id, settings.OPENAI_MODEL, wtu_amount)
+                        span.set_attribute("ai.wtu_consumed", wtu_amount)
+                        
+                        logger.bind(ai=True).info(f"WTU usage recorded for user {user_id}: {input_tokens} input + {output_tokens} output tokens = {wtu_amount} WTU")
+                    except Exception as wtu_error:
+                        # WTU 기록 실패는 태그 생성을 방해하지 않음
+                        logger.bind(ai=True).warning(f"Failed to record WTU usage: {wtu_error}")
+                
+                logger.bind(ai=True).info(f"Generated {len(tags)} tags: {tags}")
+                return tags
+                
+            except Exception as e:
+                span.set_attribute("ai.error", str(e))
+                logger.bind(ai=True).error(f"Failed to generate tags: {str(e)}")
+                raise Exception(f"OpenAI API 호출 중 오류: {str(e)}")
 
     async def recommend_webpage_category(
         self,
         summary: str,
         similar_categories: List[str] = None,
-        max_tokens: int = 100
+        max_tokens: int = 100,
+        user_id: int = None  # WTU 계측을 위한 사용자 ID
     ) -> str:
-        """웹페이지 카테고리 추천"""
+        """웹페이지 카테고리 추천 (WTU 계측 포함)"""
         try:
             logger.bind(ai=True).info(f"Recommending category for summary (length: {len(summary)})")
             
@@ -76,10 +127,16 @@ class OpenAIService:
             summary: {summary}
             """
             
+            system_msg = "당신은 웹페이지 내용을 분석하는 전문가입니다."
+            
+            # 토큰 수 계산 (요청 전)
+            input_tokens = count_tokens(system_msg + prompt, settings.OPENAI_MODEL)
+            logger.bind(ai=True).info(f"Estimated input tokens: {input_tokens}")
+            
             response = await self.client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=[
-                    {"role": "system", "content": "당신은 웹페이지 내용을 분석하는 전문가입니다."},
+                    {"role": "system", "content": system_msg},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=max_tokens,
@@ -87,6 +144,24 @@ class OpenAIService:
             )
             
             content = response.choices[0].message.content.strip()
+            
+            # 출력 토큰 수 계산
+            output_tokens = count_tokens(content, settings.OPENAI_MODEL)
+            
+            # WTU 사용량 기록 (user_id가 있을 때만)
+            if user_id:
+                try:
+                    await record_text_generation_usage(
+                        user_id=user_id,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        model=settings.OPENAI_MODEL
+                    )
+                    logger.bind(ai=True).info(f"WTU usage recorded for user {user_id}: {input_tokens} input + {output_tokens} output tokens")
+                except Exception as wtu_error:
+                    # WTU 기록 실패는 카테고리 추천을 방해하지 않음
+                    logger.bind(ai=True).warning(f"Failed to record WTU usage: {wtu_error}")
+            
             logger.bind(ai=True).info(f"Recommended category: {content}")
             return content
             

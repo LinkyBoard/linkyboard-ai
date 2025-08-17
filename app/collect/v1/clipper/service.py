@@ -15,6 +15,8 @@ from app.ai.classification.category_classifier import CategoryClassificationServ
 from app.ai.recommendation.vector_service import VectorProcessingService
 from app.ai.recommendation.user_profiling import UserProfilingService
 from app.core.models import Tag, ItemTags, Category
+from app.observability import trace_request, trace_ai_operation, record_ai_tokens, record_wtu_usage
+from app.dedup_detection import check_for_duplicates, DuplicateCandidate
 from .schemas import (
     WebpageSyncRequest,
     SummarizeRequest,
@@ -49,23 +51,24 @@ class ClipperService:
         
         logger.info("Clipper service initialized with recommendation services")
 
-    async def _process_embedding_with_monitoring(self, item_id: int, html_content: str):
+    async def _process_embedding_with_monitoring(self, item_id: int, html_content: str, user_id: int = None):
         """
-        백그라운드 태스크로 임베딩 처리 - EmbeddingService 사용
+        백그라운드 태스크로 임베딩 처리 - EmbeddingService 사용 (WTU 계측 포함)
         """
         start_time = datetime.now()
         logger.bind(
             task_type="embedding",
             item_id=item_id,
+            user_id=user_id,
             status="started",
             timestamp=start_time.isoformat()
-        ).info(f"Starting embedding process for item {item_id}")
+        ).info(f"Starting embedding process for item {item_id} (user: {user_id})")
 
         try:
             # DB 세션 생성
             from app.core.database import AsyncSessionLocal
             async with AsyncSessionLocal() as session:
-                # EmbeddingService에 임베딩 생성 위임
+                # EmbeddingService에 임베딩 생성 위임 (user_id 전달로 WTU 계측)
                 embedding_results = await self.embedding_service.create_embeddings(
                     session=session,
                     item_id=item_id,
@@ -73,7 +76,8 @@ class ClipperService:
                     content_type="html",
                     chunking_strategy="token_based",
                     embedding_generator="openai",
-                    max_chunk_size=8000
+                    max_chunk_size=8000,
+                    user_id=user_id  # WTU 계측을 위한 사용자 ID 전달
                 )
                 
                 end_time = datetime.now()
@@ -107,82 +111,140 @@ class ClipperService:
         request_data: WebpageSyncRequest,
     ) -> WebpageSyncResponse:
         """
-        Spring Boot에서 생성된 Item ID를 사용하여 동기화
+        Spring Boot에서 생성된 Item ID를 사용하여 동기화 (관측성 포함)
         """
-        try:
-            logger.info(f"Syncing webpage for user {request_data.user_id}, item {request_data.item_id}")
-            
-            # 사용자 존재 확인 및 생성
-            user = await self.user_repository.get_or_create(session, user_id=request_data.user_id)
-            logger.bind(database=True).info(f"User {request_data.user_id} retrieved/created")
-
-            existing_item = await self.item_repository.get_by_id(session, request_data.item_id)
-            if existing_item:
-                logger.info(f"Updating existing item {request_data.item_id}")
-                item = await self.item_repository.update(
-                    session,
-                    request_data.item_id,
-                    user_id=user.id,
-                    item_type="webpage",
-                    title=request_data.title,
-                    source_url=request_data.url,
-                    thumbnail=request_data.thumbnail,
-                    raw_content=request_data.html_content,
-                    summary=request_data.summary,
-                    category=request_data.category,
-                    memo=request_data.memo,
-                    processing_status="raw",
-                    updated_at=func.now(),
-                    is_active=True
-                )
-            else:
-                logger.info(f"Creating new item {request_data.item_id}")
-                item = await self.item_repository.create(
-                    session,
-                    id=request_data.item_id,
-                    user_id=user.id,
-                    item_type="webpage",
-                    title=request_data.title,
-                    source_url=request_data.url,
-                    thumbnail=request_data.thumbnail,
-                    raw_content=request_data.html_content,
-                    summary=request_data.summary,
-                    category=request_data.category,
-                    memo=request_data.memo,
-                    processing_status="raw",
-                    is_active=True
-                )
-
-            # 카테고리 ID 설정
-            if request_data.category:
-                category_id = await self._get_or_create_category_id(session, request_data.category)
-                item.category_id = category_id
-
-            # 키워드를 태그로 처리
-            if request_data.tags:
-                await self._create_item_tags(session, request_data.item_id, request_data.tags)
+        async with trace_request(
+            "sync_webpage", 
+            user_id=request_data.user_id,
+            item_id=request_data.item_id,
+            url=request_data.url,
+            has_html_content=bool(request_data.html_content),
+            method="POST"
+        ) as span:
+            try:
+                logger.info(f"Syncing webpage for user {request_data.user_id}, item {request_data.item_id}")
                 
-            # 변경사항 커밋
-            await session.commit()
+                # 사용자 존재 확인 및 생성
+                user = await self.user_repository.get_or_create(session, user_id=request_data.user_id)
+                logger.bind(database=True).info(f"User {request_data.user_id} retrieved/created")
+                span.set_attribute("user_found", True)
 
-            # 백그라운드 태스크로 임베딩 처리
-            if background_tasks and request_data.html_content:
-                background_tasks.add_task(
-                    self._process_embedding_with_monitoring,
-                    request_data.item_id,
-                    request_data.html_content,
+                existing_item = await self.item_repository.get_by_id(session, request_data.item_id)
+                if existing_item:
+                    logger.info(f"Updating existing item {request_data.item_id}")
+                    span.set_attribute("operation", "update")
+                    item = await self.item_repository.update(
+                        session,
+                        request_data.item_id,
+                        user_id=user.id,
+                        item_type="webpage",
+                        title=request_data.title,
+                        source_url=request_data.url,
+                        thumbnail=request_data.thumbnail,
+                        raw_content=request_data.html_content,
+                        summary=request_data.summary,
+                        category=request_data.category,
+                        memo=request_data.memo,
+                        processing_status="raw",
+                        updated_at=func.now(),
+                        is_active=True
+                    )
+                else:
+                    logger.info(f"Creating new item {request_data.item_id}")
+                    span.set_attribute("operation", "create")
+                    item = await self.item_repository.create(
+                        session,
+                        id=request_data.item_id,
+                        user_id=user.id,
+                        item_type="webpage",
+                        title=request_data.title,
+                        source_url=request_data.url,
+                        thumbnail=request_data.thumbnail,
+                        raw_content=request_data.html_content,
+                        summary=request_data.summary,
+                        category=request_data.category,
+                        memo=request_data.memo,
+                        processing_status="raw",
+                        is_active=True
+                    )
+
+                # 카테고리 ID 설정
+                if request_data.category:
+                    category_id = await self._get_or_create_category_id(session, request_data.category)
+                    item.category_id = category_id
+
+                # 키워드를 태그로 처리
+                if request_data.tags:
+                    await self._create_item_tags(session, request_data.item_id, request_data.tags)
+                    span.set_attribute("tags_count", len(request_data.tags))
+                
+                # 중복 콘텐츠 탐지 (새 아이템인 경우에만)
+                duplicate_candidates = []
+                if not existing_item:
+                    try:
+                        duplicate_candidates = await check_for_duplicates(
+                            session=session,
+                            user_id=request_data.user_id,
+                            title=request_data.title,
+                            summary=request_data.summary or "",
+                            url=request_data.url,
+                            max_candidates=3
+                        )
+                        span.set_attribute("duplicate_candidates_found", len(duplicate_candidates))
+                        
+                        if duplicate_candidates:
+                            logger.info(f"Found {len(duplicate_candidates)} duplicate candidates for item {request_data.item_id}")
+                            for i, candidate in enumerate(duplicate_candidates):
+                                logger.info(f"  Candidate {i+1}: item_id={candidate.item_id}, similarity={candidate.similarity_score:.3f}, type={candidate.match_type}")
+                    except Exception as dedup_error:
+                        # 중복 탐지 실패는 전체 프로세스를 방해하지 않음
+                        logger.warning(f"Duplicate detection failed: {dedup_error}")
+                        span.set_attribute("duplicate_detection_error", str(dedup_error))
+                    
+                # 변경사항 커밋
+                await session.commit()
+
+                # 백그라운드 태스크로 임베딩 처리 (WTU 계측 포함)
+                if background_tasks and request_data.html_content:
+                    background_tasks.add_task(
+                        self._process_embedding_with_monitoring,
+                        request_data.item_id,
+                        request_data.html_content,
+                        request_data.user_id  # WTU 계측을 위한 user_id 전달
+                    )
+                    span.set_attribute("embedding_scheduled", True)
+                    logger.info(f"Background task for embedding processing added for item {request_data.item_id} (user: {request_data.user_id})")
+
+                logger.bind(database=True).info(f"Item {request_data.item_id} saved successfully")
+                span.set_attribute("success", True)
+                
+                # 중복 후보를 응답에 포함
+                duplicate_response = []
+                if duplicate_candidates:
+                    from .schemas import DuplicateCandidateResponse
+                    duplicate_response = [
+                        DuplicateCandidateResponse(
+                            item_id=candidate.item_id,
+                            title=candidate.title,
+                            url=candidate.url,
+                            similarity_score=candidate.similarity_score,
+                            match_type=candidate.match_type,
+                            created_at=candidate.created_at
+                        )
+                        for candidate in duplicate_candidates
+                    ]
+                
+                return WebpageSyncResponse(
+                    success=True,
+                    message="콘텐츠가 성공적으로 저장되었습니다.",
+                    duplicate_candidates=duplicate_response if duplicate_response else None
                 )
-                logger.info(f"Background task for embedding processing added for item {request_data.item_id}")
-
-            logger.bind(database=True).info(f"Item {request_data.item_id} saved successfully")
-            return WebpageSyncResponse(
-                success=True,
-                message="콘텐츠가 성공적으로 저장되었습니다."
-            )
-        
-        except Exception as e:
-            logger.error(f"Failed to sync webpage for item {request_data.item_id}: {str(e)}")
-            raise Exception(f"저장 중 오류가 발생했습니다: {str(e)}")
+                
+            except Exception as e:
+                span.set_attribute("success", False)
+                span.set_attribute("error", str(e))
+                logger.error(f"Failed to sync webpage for item {request_data.item_id}: {str(e)}")
+                raise Exception(f"저장 중 오류가 발생했습니다: {str(e)}")
     
     async def generate_webpage_summary(self, request_data: SummarizeRequest) -> SummarizeResponse:
         """
@@ -197,11 +259,13 @@ class ClipperService:
             )
 
             tags = await self.openai_service.generate_webpage_tags(
-                summary = summary
+                summary=summary,
+                user_id=request_data.user_id  # WTU 계측을 위한 사용자 ID 전달
             )
 
             category = await self.openai_service.recommend_webpage_category(
-                summary = summary
+                summary=summary,
+                user_id=request_data.user_id  # WTU 계측을 위한 사용자 ID 전달
             )
             
             logger.info(f"Summary generation completed for URL: {request_data.url}")
@@ -290,8 +354,14 @@ class ClipperService:
             # 폴백: 기본 요약, 태그, 카테고리 생성
             try:
                 logger.info(f"Fallback: Generating basic tags and category for URL {request_data.url}")
-                tags = await self.openai_service.generate_webpage_tags(summary=summary)
-                category = await self.openai_service.recommend_webpage_category(summary=summary)
+                tags = await self.openai_service.generate_webpage_tags(
+                    summary=summary,
+                    user_id=user_id  # WTU 계측을 위한 사용자 ID 전달
+                )
+                category = await self.openai_service.recommend_webpage_category(
+                    summary=summary,
+                    user_id=user_id  # WTU 계측을 위한 사용자 ID 전달
+                )
 
                 return {
                     "summary": summary,  # 이미 생성된 요약 사용

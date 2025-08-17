@@ -3,6 +3,7 @@ import openai
 from app.ai.embedding.interfaces import EmbeddingGenerator
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.metrics import count_tokens, record_embedding_usage
 
 logger = get_logger(__name__)
 
@@ -33,8 +34,8 @@ class OpenAIEmbeddingGenerator(EmbeddingGenerator):
         else:
             return 1536  # 기본값
     
-    async def generate(self, text: str) -> List[float]:
-        """텍스트에 대한 임베딩 벡터 생성"""
+    async def generate(self, text: str, user_id: int = None) -> List[float]:
+        """텍스트에 대한 임베딩 벡터 생성 (WTU 계측 포함)"""
         try:
             logger.bind(ai=True).info(f"Generating embedding for text (length: {len(text)})")
             
@@ -42,24 +43,46 @@ class OpenAIEmbeddingGenerator(EmbeddingGenerator):
             if len(text.strip()) == 0:
                 raise ValueError("Empty text provided for embedding")
             
-            # 토큰 수 추정 및 검증
-            estimated_tokens = len(text) // 3
+            # 토큰 수 계산 (실제 요청 전)
+            embed_tokens = count_tokens(text, self.model_name)
+            logger.bind(ai=True).info(f"Estimated tokens: {embed_tokens}")
+            
+            # 토큰 수 제한 검증
             max_tokens = 8192  # OpenAI 임베딩 모델 제한
             
-            if estimated_tokens > max_tokens:
-                logger.warning(f"Text may exceed token limit (estimated: {estimated_tokens}, max: {max_tokens})")
-                # 안전하게 자르기
-                safe_length = max_tokens * 3
-                text = text[:safe_length]
-                logger.info(f"Text truncated to {len(text)} characters")
+            if embed_tokens > max_tokens:
+                logger.warning(f"Text may exceed token limit (estimated: {embed_tokens}, max: {max_tokens})")
+                # 안전하게 자르기 (토큰 기준으로 더 정확하게)
+                safe_char_count = int(len(text) * (max_tokens / embed_tokens * 0.9))  # 10% 여유
+                text = text[:safe_char_count]
+                embed_tokens = count_tokens(text, self.model_name)  # 재계산
+                logger.info(f"Text truncated, new estimated tokens: {embed_tokens}")
             
+            # OpenAI API 호출
             response = await self.client.embeddings.create(
                 model=self.model_name,
                 input=text
             )
             
             embedding = response.data[0].embedding
-            logger.bind(ai=True).info(f"Generated embedding with {len(embedding)} dimensions")
+            
+            # WTU 사용량 기록 (user_id가 있을 때만)
+            if user_id:
+                try:
+                    await record_embedding_usage(
+                        user_id=user_id,
+                        embed_tokens=embed_tokens,
+                        embedding_model=self.model_name
+                    )
+                    logger.bind(ai=True).info(f"WTU usage recorded for user {user_id}: {embed_tokens} tokens")
+                except Exception as wtu_error:
+                    # WTU 기록 실패는 임베딩 생성을 방해하지 않음
+                    logger.bind(ai=True).warning(f"Failed to record WTU usage: {wtu_error}")
+            
+            logger.bind(ai=True).info(
+                f"Generated embedding with {len(embedding)} dimensions, "
+                f"tokens: {embed_tokens}, model: {self.model_name}"
+            )
             return embedding
             
         except Exception as e:

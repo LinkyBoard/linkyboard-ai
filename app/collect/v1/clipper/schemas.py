@@ -1,5 +1,17 @@
 from typing import Optional, List, Dict
 from pydantic import BaseModel, Field
+from datetime import datetime
+
+
+# 중복 후보 스키마
+class DuplicateCandidateResponse(BaseModel):
+    """중복 후보 응답 스키마"""
+    item_id: int
+    title: str
+    url: str
+    similarity_score: float
+    match_type: str  # "exact", "high", "medium", "low"
+    created_at: datetime
 
 
 # Request 스키마
@@ -37,6 +49,7 @@ class WebpageSyncResponse(BaseModel):
     """동기화 응답 스키마"""
     success: bool
     message: str
+    duplicate_candidates: Optional[List[DuplicateCandidateResponse]] = None
 
 
 class SummarizeResponse(BaseModel):
