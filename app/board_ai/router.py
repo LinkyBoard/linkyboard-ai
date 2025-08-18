@@ -3,7 +3,6 @@ Board AI Router - 선택된 아이템 기반 AI 작업 엔드포인트
 """
 
 from typing import Optional, List
-from uuid import UUID
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
