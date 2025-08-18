@@ -4,6 +4,9 @@ from pathlib import Path
 from loguru import logger
 from app.core.config import settings
 
+# 전역 플래그: 로깅 초기화가 한 번만 실행되도록 보장
+_LOG_INITIALIZED = False
+
 
 def api_filter(record):
     """API 로그 필터링 함수"""
@@ -27,9 +30,17 @@ def api_formatter(record):
 
 def setup_logging():
     """Loguru 로깅 설정"""
+    global _LOG_INITIALIZED
     
-    # 기본 핸들러 제거
-    logger.remove()
+    # 이미 초기화되었다면 중복 실행 방지
+    if _LOG_INITIALIZED:
+        return logger
+    
+    # 기본 핸들러 제거 (안전한 제거)
+    try:
+        logger.remove()
+    except Exception:
+        pass
     
     # 로그 디렉토리 생성
     log_dir = Path(settings.LOG_DIR)
@@ -46,6 +57,7 @@ def setup_logging():
             format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | <level>{message}</level>",
             level=settings.LOG_LEVEL,
             colorize=not is_docker,  # Docker에서는 색상 비활성화
+            enqueue=False,  # 멀티프로세싱 큐 비활성화 (SemLock 회피)
             backtrace=True,
             diagnose=True
         )
@@ -55,7 +67,8 @@ def setup_logging():
             sys.stdout,
             format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
             level="INFO",
-            colorize=not is_docker
+            colorize=not is_docker,
+            enqueue=False  # 멀티프로세싱 큐 비활성화
         )
     
     # API 요청 전용 콘솔 로깅
@@ -65,6 +78,7 @@ def setup_logging():
             format="<blue>{time:HH:mm:ss}</blue> | <yellow>API</yellow> | <cyan>{extra[request_id]}</cyan> | <magenta>{extra[method]}</magenta> <white>{extra[url]}</white> | <green>{extra[status_code]}</green> | <yellow>{extra[duration]}ms</yellow> | {message}",
             level="INFO",
             colorize=True,
+            enqueue=False,  # 멀티프로세싱 큐 비활성화
             filter=lambda record: "api" in record["extra"] and record["extra"].get("log_type") == "request_end"
         )
     
@@ -77,7 +91,7 @@ def setup_logging():
         rotation=settings.LOG_ROTATION,
         retention=settings.LOG_RETENTION,
         compression="zip",
-        enqueue=True,
+        enqueue=False,  # 멀티프로세싱 큐 비활성화 (SemLock 회피)
         backtrace=True,
         diagnose=True
     )
@@ -90,7 +104,7 @@ def setup_logging():
         rotation=settings.LOG_ROTATION,
         retention=settings.LOG_RETENTION,
         compression="zip",
-        enqueue=True,
+        enqueue=False,  # 멀티프로세싱 큐 비활성화
         backtrace=True,
         diagnose=True
     )
@@ -103,7 +117,7 @@ def setup_logging():
         rotation=settings.LOG_ROTATION,
         retention=settings.LOG_RETENTION,
         compression="zip",
-        enqueue=True,
+        enqueue=False,  # 멀티프로세싱 큐 비활성화
         filter=api_filter
     )
     
@@ -115,7 +129,7 @@ def setup_logging():
         rotation=settings.LOG_ROTATION,
         retention=settings.LOG_RETENTION,
         compression="zip",
-        enqueue=True,
+        enqueue=False,  # 멀티프로세싱 큐 비활성화
         filter=lambda record: "database" in record["extra"]
     )
     
@@ -127,7 +141,7 @@ def setup_logging():
         rotation=settings.LOG_ROTATION,
         retention=settings.LOG_RETENTION,
         compression="zip",
-        enqueue=True,
+        enqueue=False,  # 멀티프로세싱 큐 비활성화
         filter=lambda record: "ai" in record["extra"]
     )
     
@@ -135,6 +149,9 @@ def setup_logging():
     if is_docker:
         logger.info("🐳 Running in Docker environment")
         logger.info(f"📂 Log directory: {log_dir}")
+    
+    # 초기화 플래그 설정
+    _LOG_INITIALIZED = True
     
     return logger
 
@@ -146,8 +163,5 @@ def get_logger(name: str = None):
     return logger
 
 
-# 로깅 설정 초기화
-setup_logging()
-
-# 기본 로거 인스턴스
+# 기본 로거 인스턴스 (초기화는 앱 시작 시 수행)
 log = get_logger(__name__)
