@@ -1,5 +1,5 @@
 """
-With AI Router - 모델 선택 지원 AI 질의 엔드포인트
+Board AI Router - 보드 문맥 기반 AI 작업 엔드포인트
 """
 
 from typing import Optional, List
@@ -8,8 +8,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.logging import get_logger
-from app.with_ai.service import with_ai_service
-from app.with_ai.schemas import (
+from app.board_ai.service import board_ai_service
+from app.board_ai.schemas import (
     AskRequest,
     AskResponse,
     AskWithItemsRequest,
@@ -24,8 +24,8 @@ logger = get_logger(__name__)
 
 # Router 인스턴스 생성
 router = APIRouter(
-    prefix="/with-ai",
-    tags=["with-ai"],
+    prefix="/board-ai",
+    tags=["board-ai"],
     responses={
         400: {"description": "Bad Request"},
         403: {"description": "Budget Exceeded"},
@@ -50,7 +50,7 @@ async def ask_with_model(
     try:
         logger.info(f"AI ask request - user: {request.user_id}, board: {request.board_id}, model: {request.model}")
         
-        result = await with_ai_service.ask_with_model_selection(
+        result = await board_ai_service.ask_with_model_selection(
             query=request.query,
             board_id=request.board_id,
             user_id=request.user_id,
@@ -88,7 +88,7 @@ async def ask_with_items(
     try:
         logger.info(f"AI ask-with-items request - user: {request.user_id}, board: {request.board_id}, items: {len(request.selected_items)}")
         
-        result = await with_ai_service.ask_with_selected_items(
+        result = await board_ai_service.ask_with_selected_items(
             query=request.query,
             instruction=request.instruction,
             selected_items=request.selected_items,
@@ -127,7 +127,7 @@ async def draft_with_model(
     try:
         logger.info(f"AI draft request - user: {request.user_id}, board: {request.board_id}, model: {request.model}")
         
-        result = await with_ai_service.draft_with_model_selection(
+        result = await board_ai_service.draft_with_model_selection(
             outline=request.outline,
             board_id=request.board_id,
             user_id=request.user_id,

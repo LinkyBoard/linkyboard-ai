@@ -1,5 +1,5 @@
 """
-With AI Schemas - 모델 선택 지원 AI 질의 스키마
+Board AI Schemas - 보드 문맥 기반 AI 작업 스키마
 """
 
 from typing import Optional, List, Dict, Any

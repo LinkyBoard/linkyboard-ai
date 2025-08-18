@@ -1,5 +1,5 @@
 """
-With AI 서비스 - 모델 선택 지원
+Board AI 서비스 - 보드 문맥 기반 AI 작업
 """
 
 from typing import Optional, Dict, Any, List
@@ -13,13 +13,13 @@ from app.ai.openai_service import openai_service
 from app.core.database import AsyncSessionLocal
 from app.core.models import Item
 from sqlalchemy import select
-from app.with_ai.schemas import SelectedItem
+from app.board_ai.schemas import SelectedItem
 
 logger = get_logger(__name__)
 
 
-class WithAIService:
-    """With AI 서비스 - 모델 선택 및 WTU 관리"""
+class BoardAIService:
+    """Board AI 서비스 - 보드 문맥 기반 RAG 및 모델 선택"""
 
     async def ask_with_model_selection(
         self,
@@ -425,4 +425,4 @@ class WithAIService:
 
 
 # 전역 서비스 인스턴스
-with_ai_service = WithAIService()
+board_ai_service = BoardAIService()
