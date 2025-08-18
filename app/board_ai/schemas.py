@@ -35,13 +35,11 @@ class AskWithItemsResponse(BaseModel):
 
 class DraftWithItemsRequest(BaseModel):
     """선택된 아이템 기반 초안 작성 요청 스키마"""
-    content_type: str = Field(..., description="작성할 콘텐츠 유형 (예: blog_post, summary, report)")
     requirements: str = Field(..., description="작성 요구사항 및 스타일 지시")
-    selected_items: List[SelectedItem] = Field(..., description="선택된 아이템 목록")
+    selected_items: List[int] = Field(..., description="선택된 아이템 ID 목록")
     board_id: UUID = Field(..., description="보드 ID")
     user_id: int = Field(..., description="사용자 ID")
     model_alias: str = Field(..., description="사용할 AI 모델 별칭")
-    max_output_tokens: int = Field(default=2000, description="최대 출력 토큰 수")
 
 
 class DraftWithItemsResponse(BaseModel):
