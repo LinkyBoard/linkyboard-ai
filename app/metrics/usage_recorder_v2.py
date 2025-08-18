@@ -30,7 +30,7 @@ async def record_usage(
     llm_model: Optional[str] = None,
     embedding_model: Optional[str] = None,
     selected_model_id: Optional[int] = None,
-    board_id: Optional[UUID] = None,
+    board_id: Optional[int] = None,
     plan_month: Optional[date] = None,
     session: Optional[AsyncSession] = None
 ) -> UsageMeter:
@@ -337,7 +337,7 @@ async def get_usage_by_model(
 
 
 async def get_board_monthly_usage(
-    board_id: UUID,
+    board_id: int,
     plan_month: date,
     session: Optional[AsyncSession] = None
 ) -> List[UsageMeter]:
@@ -376,7 +376,7 @@ async def get_board_monthly_usage(
 
 
 async def get_board_total_monthly_wtu(
-    board_id: UUID,
+    board_id: int,
     plan_month: date,
     session: Optional[AsyncSession] = None
 ) -> int:

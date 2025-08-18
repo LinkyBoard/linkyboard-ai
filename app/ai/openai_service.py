@@ -396,7 +396,7 @@ class OpenAIService:
         max_tokens: int = 1000,
         temperature: float = 0.7,
         user_id: int = None,
-        board_id: str = None
+        board_id: int = None
     ) -> Dict[str, Any]:
         """
         일반적인 채팅 완성 생성 (Model Picker v1용)

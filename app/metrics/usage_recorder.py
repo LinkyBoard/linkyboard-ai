@@ -25,7 +25,7 @@ async def record_embedding_usage(
     embed_tokens: int,
     embedding_model: str = "text-embedding-3-small",
     run_id: Optional[UUID] = None,
-    board_id: Optional[UUID] = None,
+    board_id: Optional[int] = None,
     session: Optional[AsyncSession] = None
 ) -> UsageMeter:
     """
@@ -107,7 +107,7 @@ async def record_llm_usage(
     llm_model: str = "gpt-4o-mini",
     cached_in_tokens: int = 0,
     run_id: Optional[UUID] = None,
-    board_id: Optional[UUID] = None,
+    board_id: Optional[int] = None,
     session: Optional[AsyncSession] = None
 ) -> UsageMeter:
     """
@@ -231,7 +231,7 @@ async def get_user_monthly_wtu(
 
 
 async def get_board_total_monthly_wtu(
-    board_id: UUID,
+    board_id: int,
     plan_month: date,
     session: Optional[AsyncSession] = None
 ) -> int:
@@ -268,7 +268,7 @@ async def get_board_total_monthly_wtu(
 
 async def get_usage_statistics(
     user_id: Optional[int] = None,
-    board_id: Optional[UUID] = None,
+    board_id: Optional[int] = None,
     plan_month: Optional[date] = None,
     session: Optional[AsyncSession] = None
 ) -> Dict[str, Any]:

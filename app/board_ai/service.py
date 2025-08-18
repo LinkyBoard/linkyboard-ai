@@ -3,7 +3,7 @@ Board AI 서비스 - 선택된 아이템 기반 AI 작업
 """
 
 from typing import Optional, Dict, Any, List
-from uuid import UUID
+# from uuid import UUID - 더 이상 UUID 사용하지 않음
 from datetime import date
 
 from app.metrics.model_catalog_service import model_catalog_service
@@ -69,7 +69,7 @@ class BoardAIService:
         self,
         selected_items: List[int],
         task_description: str,
-        board_id: UUID,
+        board_id: int,
         user_id: int,
         estimated_output_tokens: int = 1500,
         session: Optional[AsyncSession] = None
@@ -152,7 +152,7 @@ class BoardAIService:
         query: str,
         instruction: str,
         selected_items: List[SelectedItem],
-        board_id: UUID,
+        board_id: int,
         user_id: int,
         model_alias: str,
         max_output_tokens: int = 1500,
@@ -238,7 +238,7 @@ class BoardAIService:
                 max_tokens=max_output_tokens,
                 temperature=0.7,
                 user_id=user_id,
-                board_id=str(board_id)
+                board_id=board_id
             )
             
             return {
@@ -267,7 +267,7 @@ class BoardAIService:
         self,
         requirements: str,
         selected_items: List[int],
-        board_id: UUID,
+        board_id: int,
         user_id: int,
         model_alias: str,
         session: Optional[AsyncSession] = None
@@ -355,7 +355,7 @@ class BoardAIService:
                 max_tokens=2000,  # 기본값으로 설정
                 temperature=0.3,  
                 user_id=user_id,
-                board_id=str(board_id)
+                board_id=board_id
             )
             
             return {

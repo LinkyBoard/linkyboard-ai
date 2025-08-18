@@ -145,3 +145,42 @@ test-cov:
 	pipenv run pytest --cov=app --cov-report=html tests/unit
 	@echo "📊 Opening coverage report..."
 	open htmlcov/index.html
+
+# AI 모델 카탈로그 관리
+.PHONY: models-check models-init models-sync-to-prod models-from-file models-test
+
+models-check:
+	@echo "🤖 Dev 데이터베이스의 AI 모델 정보 확인..."
+	pipenv run python scripts/check_models.py
+
+models-test:
+	@echo "🧪 AI 모델 카탈로그 관리 시스템 테스트..."
+	pipenv run python scripts/test_model_catalog.py
+
+models-init:
+	@echo "🤖 새 데이터베이스에 초기 AI 모델 설정..."
+	@if [ ! -f .env ]; then echo "❌ .env file not found"; exit 1; fi
+	@eval $$(grep -E '^(POSTGRES_HOST|POSTGRES_PORT|POSTGRES_USER|POSTGRES_PASSWORD)=' .env | sed 's/^/export /') && \
+	export TARGET_DB="$${POSTGRES_DB:-dev}" && \
+	export DATABASE_URL="postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@$${POSTGRES_HOST}:$${POSTGRES_PORT}/$${TARGET_DB}" && \
+	echo "✅ 데이터베이스에 초기 모델 설정: $${POSTGRES_HOST}:$${POSTGRES_PORT}/$${TARGET_DB}" && \
+	pipenv run python scripts/manage_model_catalog.py --action init --database-url "$${DATABASE_URL}"
+
+models-sync-to-prod:
+	@echo "🤖 Dev에서 Prod로 AI 모델 동기화..."
+	@if [ ! -f .env ]; then echo "❌ .env file not found"; exit 1; fi
+	@eval $$(grep -E '^(POSTGRES_HOST|POSTGRES_PORT|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_DB)=' .env | sed 's/^/export /') && \
+	export DEV_DATABASE_URL="postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@$${POSTGRES_HOST}:$${POSTGRES_PORT}/$${POSTGRES_DB}" && \
+	export PROD_DATABASE_URL="postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@$${POSTGRES_HOST}:$${POSTGRES_PORT}/prod" && \
+	echo "✅ Dev에서 Prod로 모델 동기화: $${POSTGRES_HOST}:$${POSTGRES_PORT}" && \
+	pipenv run python scripts/manage_model_catalog.py --action sync --database-url "$${PROD_DATABASE_URL}" --dev-database-url "$${DEV_DATABASE_URL}"
+
+models-from-file:
+	@echo "🤖 파일에서 AI 모델 데이터 로드..."
+	@if [ ! -f .env ]; then echo "❌ .env file not found"; exit 1; fi
+	@if [ -z "$(file)" ]; then echo "❌ Usage: make models-from-file file=model_catalog_data.json"; exit 1; fi
+	@eval $$(grep -E '^(POSTGRES_HOST|POSTGRES_PORT|POSTGRES_USER|POSTGRES_PASSWORD)=' .env | sed 's/^/export /') && \
+	export TARGET_DB="$${POSTGRES_DB:-dev}" && \
+	export DATABASE_URL="postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@$${POSTGRES_HOST}:$${POSTGRES_PORT}/$${TARGET_DB}" && \
+	echo "✅ 파일에서 모델 로드: $(file) -> $${POSTGRES_HOST}:$${POSTGRES_PORT}/$${TARGET_DB}" && \
+	pipenv run python scripts/manage_model_catalog.py --action from-file --database-url "$${DATABASE_URL}" --file "$(file)"

@@ -6,7 +6,7 @@
 
 import logging
 from typing import Optional, List, Set
-from uuid import UUID
+# from uuid import UUID - 더 이상 UUID 사용하지 않음
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class ModelPolicyService:
     """모델 정책 관리 서비스"""
 
-    async def get_board_policy(self, board_id: UUID, session: Optional[AsyncSession] = None) -> Optional[BoardModelPolicy]:
+    async def get_board_policy(self, board_id: int, session: Optional[AsyncSession] = None) -> Optional[BoardModelPolicy]:
         """보드 모델 정책 조회"""
         close_session = False
         if session is None:
@@ -39,7 +39,7 @@ class ModelPolicyService:
 
     async def create_or_update_board_policy(
         self,
-        board_id: UUID,
+        board_id: int,
         default_model_id: Optional[int] = None,
         allowed_model_ids: Optional[List[int]] = None,
         budget_wtu: Optional[int] = None,
@@ -94,7 +94,7 @@ class ModelPolicyService:
     async def validate_model_selection(
         self,
         model_id: int,
-        board_id: Optional[UUID] = None,
+        board_id: Optional[int] = None,
         user_id: Optional[int] = None,
         session: Optional[AsyncSession] = None
     ) -> bool:
@@ -142,7 +142,7 @@ class ModelPolicyService:
     async def get_effective_model(
         self,
         requested_model: Optional[str] = None,
-        board_id: Optional[UUID] = None,
+        board_id: Optional[int] = None,
         user_id: Optional[int] = None,
         model_type: str = "llm",
         session: Optional[AsyncSession] = None
@@ -231,7 +231,7 @@ class ModelPolicyService:
 
     async def check_budget_limit(
         self,
-        board_id: UUID,
+        board_id: int,
         estimated_wtu: int,
         current_month_wtu: int,
         session: Optional[AsyncSession] = None
