@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.collect.v1.clipper.router import router as clipper_router
+from app.collect.v1.content.router import router as content_router
 from app.board_ai.router import router as board_ai_router
 from app.user_sync.router import router as user_sync_router
 from app.admin.models.router import router as admin_models_router
@@ -19,6 +20,9 @@ app.add_middleware(ErrorHandlingMiddleware)
 
 # Clipper
 app.include_router(clipper_router)
+
+# Content (콘텐츠 관리)
+app.include_router(content_router)
 
 # Board AI (보드 문맥 기반 AI 작업)
 app.include_router(board_ai_router)
