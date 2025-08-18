@@ -43,6 +43,7 @@ class DraftWithItemsRequest(BaseModel):
 
 class DraftWithItemsResponse(BaseModel):
     """선택된 아이템 기반 초안 작성 응답 스키마"""
+    title: str = Field(..., description="생성된 초안 제목")
     draft_md: str = Field(..., description="마크다운 형식의 초안")
     used_items: List[Dict[str, Any]] = Field(..., description="사용된 아이템 정보")
     usage: Dict[str, Any] = Field(..., description="사용량 정보")

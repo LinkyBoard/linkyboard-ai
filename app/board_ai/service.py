@@ -326,9 +326,9 @@ class BoardAIService:
                     "included_content": True   # 항상 True
                 })
             
-            # AI 프롬프트 구성
+            # AI 프롬프트 구성 (제목과 초안을 함께 생성)
             system_prompt = f"""당신은 전문적인 콘텐츠 작성자입니다. 
-제공된 자료들을 바탕으로 초안을 작성해주세요.
+제공된 자료들을 바탕으로 적절한 제목과 초안을 작성해주세요.
 
 **작성 요구사항:**
 {requirements}
@@ -336,30 +336,79 @@ class BoardAIService:
 **참고 자료들:**
 {chr(10).join(source_materials)}
 
-다음 지침을 따라 초안을 작성해주세요:
-1. 마크다운 형식으로 작성
-2. 제공된 자료들의 내용을 적절히 활용
-3. 논리적이고 일관된 구조로 구성
-4. 참고한 자료의 출처를 명시
-5. 적절한 길이로 작성"""
+다음 JSON 형식으로 정확히 응답해주세요:
+{{
+  "title": "작성 요구사항과 참고 자료를 바탕으로 한 적절한 제목 (한 줄로 작성)",
+  "content": "마크다운 형식의 초안 내용"
+}}
+
+지침:
+1. 제목은 간결하고 내용을 잘 요약해야 함
+2. 초안은 마크다운 형식으로 작성
+3. 제공된 자료들의 내용을 적절히 활용
+4. 논리적이고 일관된 구조로 구성
+5. 참고한 자료의 출처를 명시
+6. 반드시 정확한 JSON 형식으로 응답"""
 
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": "초안을 작성해주세요."}
+                {"role": "user", "content": "제목과 초안을 JSON 형식으로 작성해주세요."}
             ]
             
             # AI 호출
             ai_result = await openai_service.generate_chat_completion(
                 messages=messages,
                 model=model.model_name,
-                max_tokens=2000,  # 기본값으로 설정
+                max_tokens=2500,  # 제목과 내용을 위해 증가
                 temperature=0.3,  
                 user_id=user_id,
                 board_id=board_id
             )
             
+            # JSON 응답 파싱 시도
+            title = "초안"  # 기본 제목
+            draft_content = ai_result["content"]
+            
+            try:
+                import json
+                import re
+                
+                # JSON 부분만 추출 (```json ... ``` 형태 또는 직접 JSON)
+                content = ai_result["content"].strip()
+                
+                # 코드 블록 제거
+                if content.startswith("```"):
+                    # ```json ... ``` 형태에서 JSON 부분 추출
+                    json_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', content, re.DOTALL)
+                    if json_match:
+                        content = json_match.group(1)
+                
+                # JSON 파싱
+                parsed_result = json.loads(content)
+                
+                if isinstance(parsed_result, dict) and "title" in parsed_result and "content" in parsed_result:
+                    title = parsed_result["title"].strip()
+                    draft_content = parsed_result["content"].strip()
+                    logger.info("Successfully parsed structured response with title and content")
+                else:
+                    logger.warning("JSON response missing required fields, using fallback")
+                    
+            except (json.JSONDecodeError, KeyError, AttributeError) as e:
+                logger.warning(f"Failed to parse JSON response, using fallback: {str(e)}")
+                # 제목을 요구사항에서 추출하려 시도
+                if requirements and len(requirements) > 10:
+                    # 요구사항의 첫 문장이나 핵심 키워드를 제목으로 사용
+                    title_candidate = requirements.split('.')[0].split('\n')[0][:50]
+                    if title_candidate:
+                        title = title_candidate.strip()
+            
+            # 빈 제목 방지
+            if not title or len(title.strip()) == 0:
+                title = "생성된 초안"
+            
             return {
-                "draft_md": ai_result["content"],
+                "title": title,
+                "draft_md": draft_content,
                 "used_items": used_items,
                 "usage": {
                     "input_tokens": ai_result["input_tokens"],
