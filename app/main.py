@@ -21,7 +21,7 @@ app.add_middleware(ErrorHandlingMiddleware)
 # Clipper
 app.include_router(clipper_router)
 
-# Content (콘텐츠 관리)
+# Items (아이템 관리)
 app.include_router(content_router)
 
 # Board AI (보드 문맥 기반 AI 작업)

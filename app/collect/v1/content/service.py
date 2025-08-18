@@ -9,18 +9,18 @@ from sqlalchemy import select, and_
 from app.core.logging import get_logger
 from app.core.models import Item, ItemEmbeddingMetadata, ItemTags
 from app.observability import trace_request, record_db_operation
-from .schemas import ContentDeleteRequest
+from .schemas import ItemDeleteRequest
 
 logger = get_logger(__name__)
 
 
 class ContentService:
-    """Content 관리 서비스"""
+    """Item 관리 서비스"""
     
     async def delete_items(
         self, 
         session: AsyncSession, 
-        request_data: ContentDeleteRequest
+        request_data: ItemDeleteRequest
     ) -> Dict[str, Any]:
         """
         여러 개의 Item을 삭제합니다.

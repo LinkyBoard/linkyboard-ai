@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
 from app.main import app
 from app.collect.v1.content.service import get_content_service
-from app.collect.v1.content.schemas import ContentDeleteResponse, ContentDeleteBatchResponse
+from app.collect.v1.content.schemas import ItemDeleteResponse
 
 # TestClient 인스턴스 생성
 client = TestClient(app)
@@ -39,11 +39,11 @@ def mock_content_service():
     app.dependency_overrides.clear()
 
 
-class TestContentDeleteRouter:
-    """Content 삭제 Router 단위 테스트"""
+class TestItemDeleteRouter:
+    """Item 삭제 Router 단위 테스트"""
     
     def test_delete_single_item_success(self, mock_content_service):
-        """DELETE /api/v1/content/items 단일 아이템 삭제 성공 테스트"""
+        """DELETE /api/v1/items 단일 아이템 삭제 성공 테스트"""
         # Given
         request_data = {
             "item_ids": [123],
@@ -53,7 +53,7 @@ class TestContentDeleteRouter:
         # When
         response = client.request(
             "DELETE", 
-            "/api/v1/content/items", 
+            "/api/v1/items", 
             headers={"Content-Type": "application/json"},
             content=json.dumps(request_data)
         )
@@ -65,6 +65,7 @@ class TestContentDeleteRouter:
         assert result["deleted_count"] == 1
         assert result["total_requested"] == 1
         assert result["failed_items"] == []
+        assert len(result["results"]) == 1
         assert "성공적으로 삭제되었습니다" in result["message"]
         
         # 서비스 호출 확인
@@ -77,7 +78,7 @@ class TestContentDeleteRouter:
         assert request_obj.user_id == 456
     
     def test_delete_multiple_items_success(self, mock_content_service):
-        """DELETE /api/v1/content/items 다중 아이템 삭제 성공 테스트"""
+        """DELETE /api/v1/items 다중 아이템 삭제 성공 테스트"""
         # Given
         request_data = {
             "item_ids": [123, 456, 789],
@@ -99,7 +100,7 @@ class TestContentDeleteRouter:
         # When
         response = client.request(
             "DELETE", 
-            "/api/v1/content/items", 
+            "/api/v1/items", 
             headers={"Content-Type": "application/json"},
             content=json.dumps(request_data)
         )
@@ -111,9 +112,10 @@ class TestContentDeleteRouter:
         assert result["deleted_count"] == 3
         assert result["total_requested"] == 3
         assert result["failed_items"] == []
+        assert len(result["results"]) == 3
         
     def test_delete_items_partial_failure(self, mock_content_service):
-        """DELETE /api/v1/content/items 부분 실패 테스트"""
+        """DELETE /api/v1/items 부분 실패 테스트"""
         # Given
         request_data = {
             "item_ids": [123, 456, 789],
@@ -135,7 +137,7 @@ class TestContentDeleteRouter:
         # When
         response = client.request(
             "DELETE", 
-            "/api/v1/content/items", 
+            "/api/v1/items", 
             headers={"Content-Type": "application/json"},
             content=json.dumps(request_data)
         )
@@ -147,10 +149,11 @@ class TestContentDeleteRouter:
         assert result["deleted_count"] == 2
         assert result["total_requested"] == 3
         assert result["failed_items"] == [789]
-        assert "2/3개의 콘텐츠가 삭제되었습니다" in result["message"]
+        assert len(result["results"]) == 3
+        assert "2/3개의 아이템이 삭제되었습니다" in result["message"]
         
     def test_delete_items_validation_error(self, mock_content_service):
-        """DELETE /api/v1/content/items 유효성 검증 실패 테스트"""
+        """DELETE /api/v1/items 유효성 검증 실패 테스트"""
         # Given - 빈 item_ids 배열
         request_data = {
             "item_ids": [],
@@ -160,7 +163,7 @@ class TestContentDeleteRouter:
         # When
         response = client.request(
             "DELETE", 
-            "/api/v1/content/items", 
+            "/api/v1/items", 
             headers={"Content-Type": "application/json"},
             content=json.dumps(request_data)
         )
@@ -172,7 +175,7 @@ class TestContentDeleteRouter:
         mock_content_service.delete_items.assert_not_called()
         
     def test_delete_items_missing_fields(self, mock_content_service):
-        """DELETE /api/v1/content/items 필수 필드 누락 테스트"""
+        """DELETE /api/v1/items 필수 필드 누락 테스트"""
         # Given - user_id 누락
         request_data = {
             "item_ids": [123, 456]
@@ -181,7 +184,7 @@ class TestContentDeleteRouter:
         # When
         response = client.request(
             "DELETE", 
-            "/api/v1/content/items", 
+            "/api/v1/items", 
             headers={"Content-Type": "application/json"},
             content=json.dumps(request_data)
         )
@@ -193,7 +196,7 @@ class TestContentDeleteRouter:
         mock_content_service.delete_items.assert_not_called()
         
     def test_delete_items_service_error(self, mock_content_service):
-        """DELETE /api/v1/content/items 서비스 오류 테스트"""
+        """DELETE /api/v1/items 서비스 오류 테스트"""
         # Given
         request_data = {
             "item_ids": [123],
@@ -205,7 +208,7 @@ class TestContentDeleteRouter:
         # When
         response = client.request(
             "DELETE", 
-            "/api/v1/content/items", 
+            "/api/v1/items", 
             headers={"Content-Type": "application/json"},
             content=json.dumps(request_data)
         )
@@ -215,8 +218,8 @@ class TestContentDeleteRouter:
         result = response.json()
         assert "Database connection failed" in result["detail"]
         
-    def test_delete_items_batch_success(self, mock_content_service):
-        """DELETE /api/v1/content/items/batch 배치 삭제 성공 테스트"""
+    def test_delete_items_detailed_results(self, mock_content_service):
+        """DELETE /api/v1/items 상세 결과 포함 테스트"""
         # Given
         request_data = {
             "item_ids": [123, 456],
@@ -229,15 +232,15 @@ class TestContentDeleteRouter:
             "failed_items": [],
             "total_requested": 2,
             "results": [
-                {"item_id": 123, "status": "success", "title": "Item 1"},
-                {"item_id": 456, "status": "success", "title": "Item 2"}
+                {"item_id": 123, "status": "success", "title": "Test Item 1"},
+                {"item_id": 456, "status": "success", "title": "Test Item 2"}
             ]
         }
         
         # When
         response = client.request(
             "DELETE", 
-            "/api/v1/content/items/batch", 
+            "/api/v1/items", 
             headers={"Content-Type": "application/json"},
             content=json.dumps(request_data)
         )
@@ -246,48 +249,11 @@ class TestContentDeleteRouter:
         assert response.status_code == 200
         result = response.json()
         assert result["success"] == True
-        assert "모든 콘텐츠가 성공적으로 삭제되었습니다" in result["message"]
+        assert "성공적으로 삭제되었습니다" in result["message"]
         assert len(result["results"]) == 2
-        assert result["summary"]["total_requested"] == 2
-        assert result["summary"]["deleted_count"] == 2
-        assert result["summary"]["failed_count"] == 0
-        assert result["summary"]["success_rate"] == 1.0
         
-    def test_delete_items_batch_partial_failure(self, mock_content_service):
-        """DELETE /api/v1/content/items/batch 배치 삭제 부분 실패 테스트"""
-        # Given
-        request_data = {
-            "item_ids": [123, 456, 789],
-            "user_id": 1001
-        }
-        
-        mock_content_service.delete_items.return_value = {
-            "success": False,
-            "deleted_count": 1,
-            "failed_items": [456, 789],
-            "total_requested": 3,
-            "results": [
-                {"item_id": 123, "status": "success", "title": "Item 1"},
-                {"item_id": 456, "status": "failed", "reason": "Item not found"},
-                {"item_id": 789, "status": "failed", "reason": "Access denied"}
-            ]
-        }
-        
-        # When
-        response = client.request(
-            "DELETE", 
-            "/api/v1/content/items/batch", 
-            headers={"Content-Type": "application/json"},
-            content=json.dumps(request_data)
-        )
-        
-        # Then
-        assert response.status_code == 200
-        result = response.json()
-        assert result["success"] == False
-        assert "배치 삭제가 부분적으로 완료되었습니다" in result["message"]
-        assert len(result["results"]) == 3
-        assert result["summary"]["total_requested"] == 3
-        assert result["summary"]["deleted_count"] == 1
-        assert result["summary"]["failed_count"] == 2
-        assert abs(result["summary"]["success_rate"] - (1/3)) < 0.001  # 부동소수점 비교
+        # 각 결과에 필요한 정보가 포함되어 있는지 확인
+        for item_result in result["results"]:
+            assert "item_id" in item_result
+            assert "status" in item_result
+            assert item_result["status"] == "success"
