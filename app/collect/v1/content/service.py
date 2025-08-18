@@ -115,7 +115,7 @@ class ContentService:
                     f"{deleted_count}/{total_requested} items deleted successfully"
                 )
                 
-                record_db_operation("delete", "items", count=deleted_count)
+                record_db_operation("delete", "items")
                 
                 return {
                     "success": success,
