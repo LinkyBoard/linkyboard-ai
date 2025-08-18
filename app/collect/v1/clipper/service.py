@@ -278,6 +278,87 @@ class ClipperService:
             logger.error(f"Failed to generate summary for URL {request_data.url}: {str(e)}")
             raise Exception(f"요약 생성 중 오류가 발생했습니다: {str(e)}")
     
+    async def generate_youtube_summary_with_recommendations(
+        self,
+        session: AsyncSession,
+        url: str,
+        title: str,
+        transcript: str,
+        user_id: int,
+        tag_count: int = 5
+    ) -> Dict:
+        """
+        사용자 맞춤 추천이 포함된 유튜브 동영상 요약 생성
+        """
+        logger.bind(user_id=user_id).info(f"Generating YouTube summary with recommendations for URL: {url}")
+
+        # 1. 기본 요약 생성 (유튜브 전용)
+        summary = await self.openai_service.generate_youtube_summary(
+            title=title,
+            transcript=transcript,
+            user_id=user_id
+        )
+
+        try:
+            # 2. 사용자 기반 추천 서비스 초기화
+            user_profiling = UserProfilingService(session)
+            
+            # 3. 개인화된 태그 추천
+            recommended_tags = await user_profiling.recommend_tags_for_content(
+                content_text=f"{title}\n\n{summary}",
+                user_id=user_id,
+                limit=tag_count
+            )
+            
+            # 4. 개인화된 카테고리 추천
+            recommended_category = await user_profiling.recommend_category_for_content(
+                content_text=f"{title}\n\n{summary}",
+                user_id=user_id
+            )
+            
+            logger.bind(user_id=user_id).info(
+                f"YouTube personalized recommendations completed: "
+                f"tags={len(recommended_tags)}, category={recommended_category}"
+            )
+            
+            return {
+                'summary': summary,
+                'recommended_tags': recommended_tags,
+                'recommended_category': recommended_category
+            }
+            
+        except Exception as rec_error:
+            # 추천 실패 시 기본 AI 추천으로 폴백
+            logger.warning(f"Personalized recommendations failed, falling back to AI: {str(rec_error)}")
+            
+            try:
+                tags = await self.openai_service.generate_youtube_tags(
+                    title=title,
+                    summary=summary,
+                    user_id=user_id
+                )
+                
+                category = await self.openai_service.recommend_youtube_category(
+                    title=title,
+                    summary=summary,
+                    user_id=user_id
+                )
+                
+                return {
+                    'summary': summary,
+                    'recommended_tags': tags,
+                    'recommended_category': category
+                }
+                
+            except Exception as ai_error:
+                logger.error(f"AI fallback also failed: {str(ai_error)}")
+                # 최후의 기본값
+                return {
+                    'summary': summary,
+                    'recommended_tags': ['유튜브', '동영상'],
+                    'recommended_category': 'Video'
+                }
+
     async def generate_webpage_summary_with_recommendations(
         self,
         session: AsyncSession,
