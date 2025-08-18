@@ -15,6 +15,188 @@ class OpenAIService:
         self.client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         logger.info("OpenAI service initialized")
 
+    async def generate_youtube_summary(
+        self, 
+        title: str,
+        transcript: str,
+        user_id: int = None
+    ) -> str:
+        """유튜브 동영상 요약 생성"""
+        try:
+            logger.bind(ai=True).info(f"Generating YouTube summary for video: {title[:50]}...")
+            
+            prompt = f"""
+            다음 YouTube 동영상의 제목과 스크립트를 분석하여 핵심 내용을 요약해주세요.
+            요약은 동영상의 주요 내용, 핵심 메시지, 중요한 정보를 포함해야 합니다.
+            요약은 한국어로 작성하고, 3-5문장으로 간결하게 작성해주세요.
+
+            제목: {title}
+            
+            스크립트:
+            {transcript[:3000]}  # 스크립트가 너무 길면 처음 3000자만 사용
+            """
+            
+            system_msg = "당신은 YouTube 동영상 콘텐츠를 분석하는 전문가입니다."
+            
+            # 토큰 수 계산
+            input_tokens = count_tokens(system_msg + prompt, settings.OPENAI_MODEL)
+            
+            response = await self.client.chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=500
+            )
+            
+            summary = response.choices[0].message.content.strip()
+            output_tokens = response.usage.completion_tokens
+            
+            # 토큰 사용량 기록
+            record_ai_tokens(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                model=settings.OPENAI_MODEL
+            )
+            
+            # WTU 사용량 기록
+            if user_id:
+                record_wtu_usage(
+                    user_id=user_id,
+                    model=settings.OPENAI_MODEL,
+                    wtu_amount=input_tokens + output_tokens
+                )
+            
+            logger.bind(ai=True).info(f"YouTube summary generated successfully (length: {len(summary)})")
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Failed to generate YouTube summary: {str(e)}")
+            raise
+
+    async def generate_youtube_tags(
+        self, 
+        title: str,
+        summary: str,
+        tag_count: int = 5,
+        user_id: int = None
+    ) -> List[str]:
+        """유튜브 동영상 태그 생성"""
+        try:
+            logger.bind(ai=True).info(f"Generating YouTube tags for video: {title[:50]}...")
+            
+            prompt = f"""
+            다음 YouTube 동영상의 제목과 요약을 분석하여 {tag_count}개의 태그를 생성해주세요.
+            태그는 동영상의 주제, 카테고리, 핵심 키워드를 반영해야 합니다.
+            각 태그는 쉼표로 구분해주세요.
+            태그는 한글 또는 영어의 명사형 단어로 작성해주세요.
+
+            제목: {title}
+            요약: {summary}
+            """
+            
+            system_msg = "당신은 YouTube 콘텐츠를 분석하는 태그 생성 전문가입니다."
+            
+            input_tokens = count_tokens(system_msg + prompt, settings.OPENAI_MODEL)
+            
+            response = await self.client.chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.5,
+                max_tokens=100
+            )
+            
+            tags_text = response.choices[0].message.content.strip()
+            output_tokens = response.usage.completion_tokens
+            
+            # 태그 파싱
+            tags = [tag.strip() for tag in tags_text.split(',') if tag.strip()]
+            
+            # 토큰 사용량 기록
+            record_ai_tokens(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                model=settings.OPENAI_MODEL
+            )
+            
+            if user_id:
+                record_wtu_usage(
+                    user_id=user_id,
+                    model=settings.OPENAI_MODEL,
+                    wtu_amount=input_tokens + output_tokens
+                )
+            
+            logger.bind(ai=True).info(f"YouTube tags generated: {tags}")
+            return tags
+            
+        except Exception as e:
+            logger.error(f"Failed to generate YouTube tags: {str(e)}")
+            raise
+
+    async def recommend_youtube_category(
+        self, 
+        title: str,
+        summary: str,
+        user_id: int = None
+    ) -> str:
+        """유튜브 동영상 카테고리 추천"""
+        try:
+            logger.bind(ai=True).info(f"Recommending YouTube category for video: {title[:50]}...")
+            
+            prompt = f"""
+            다음 YouTube 동영상의 제목과 요약을 분석하여 가장 적합한 카테고리를 추천해주세요.
+            카테고리는 다음 중 하나여야 합니다:
+            Education, Entertainment, Technology, Music, Gaming, Sports, News, Lifestyle, Tutorial, Review, Vlog, Comedy, Science, Business, Art
+
+            제목: {title}
+            요약: {summary}
+
+            카테고리명만 응답해주세요.
+            """
+            
+            system_msg = "당신은 YouTube 콘텐츠를 분석하는 카테고리 분류 전문가입니다."
+            
+            input_tokens = count_tokens(system_msg + prompt, settings.OPENAI_MODEL)
+            
+            response = await self.client.chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=50
+            )
+            
+            category = response.choices[0].message.content.strip()
+            output_tokens = response.usage.completion_tokens
+            
+            # 토큰 사용량 기록
+            record_ai_tokens(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                model=settings.OPENAI_MODEL
+            )
+            
+            if user_id:
+                record_wtu_usage(
+                    user_id=user_id,
+                    model=settings.OPENAI_MODEL,
+                    wtu_amount=input_tokens + output_tokens
+                )
+            
+            logger.bind(ai=True).info(f"YouTube category recommended: {category}")
+            return category
+            
+        except Exception as e:
+            logger.error(f"Failed to recommend YouTube category: {str(e)}")
+            raise
+
     async def generate_webpage_tags(
         self, 
         summary: str,
