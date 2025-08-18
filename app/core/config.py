@@ -21,10 +21,16 @@ class Settings(BaseSettings):
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 3600
 
-    # OpenAI 설정
+    # AI Provider 설정
     OPENAI_API_KEY: str
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     OPENAI_MODEL: str = "gpt-3.5-turbo"
+    
+    # Claude (Anthropic) 설정
+    CLAUDE_API_KEY: Optional[str] = None
+    
+    # Google (Gemini) 설정  
+    GOOGLE_API_KEY: Optional[str] = None
     
     # 애플리케이션 설정
     APP_NAME: str = "LinkyBoard AI"

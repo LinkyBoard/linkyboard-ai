@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from fastapi import BackgroundTasks
 from datetime import datetime
 
-from app.ai.openai_service import openai_service
+from app.ai.providers.router import ai_router
 from app.core.repository import ItemRepository
 from app.core.logging import get_logger
 from app.user.user_repository import UserRepository
@@ -46,7 +46,7 @@ class ClipperService:
     def __init__(self):
         self.user_repository = UserRepository()
         self.item_repository = ItemRepository()
-        self.openai_service = openai_service
+        self.ai_router = ai_router
         self.embedding_service = embedding_service
         
         # 추천 관련 서비스들 추가
@@ -428,17 +428,17 @@ class ClipperService:
         try:
             logger.info(f"Generating summary for URL: {request_data.url}")
             
-            summary = await self.openai_service.generate_webpage_summary(
+            summary = await self.ai_router.generate_webpage_summary(
                 url=request_data.url,
                 html_content=request_data.html_content
             )
 
-            tags = await self.openai_service.generate_webpage_tags(
+            tags = await self.ai_router.generate_webpage_tags(
                 summary=summary,
                 user_id=request_data.user_id  # WTU 계측을 위한 사용자 ID 전달
             )
 
-            category = await self.openai_service.recommend_webpage_category(
+            category = await self.ai_router.recommend_webpage_category(
                 summary=summary,
                 user_id=request_data.user_id  # WTU 계측을 위한 사용자 ID 전달
             )
@@ -468,7 +468,7 @@ class ClipperService:
         logger.bind(user_id=user_id).info(f"Generating YouTube summary with recommendations for URL: {url}")
 
         # 1. 기본 요약 생성 (유튜브 전용)
-        summary = await self.openai_service.generate_youtube_summary(
+        summary = await self.ai_router.generate_youtube_summary(
             title=title,
             transcript=transcript,
             user_id=user_id
@@ -538,13 +538,13 @@ class ClipperService:
                 logger.warning(f"User profiling failed, falling back to OpenAI: {str(profile_error)}")
                 
                 try:
-                    tags = await self.openai_service.generate_youtube_tags(
+                    tags = await self.ai_router.generate_youtube_tags(
                         title=title,
                         summary=summary,
                         user_id=user_id
                     )
                     
-                    category = await self.openai_service.recommend_youtube_category(
+                    category = await self.ai_router.recommend_youtube_category(
                         title=title,
                         summary=summary,
                         user_id=user_id
@@ -578,7 +578,7 @@ class ClipperService:
         logger.bind(user_id=user_id).info(f"Generating summary with recommendations for URL: {request_data.url}")
 
         # 1. 기본 요약 생성 (항상 먼저 실행)
-        summary = await self.openai_service.generate_webpage_summary(
+        summary = await self.ai_router.generate_webpage_summary(
             url=request_data.url,
             html_content=request_data.html_content
         )
@@ -641,11 +641,11 @@ class ClipperService:
             # 폴백: 기본 요약, 태그, 카테고리 생성
             try:
                 logger.info(f"Fallback: Generating basic tags and category for URL {request_data.url}")
-                tags = await self.openai_service.generate_webpage_tags(
+                tags = await self.ai_router.generate_webpage_tags(
                     summary=summary,
                     user_id=user_id  # WTU 계측을 위한 사용자 ID 전달
                 )
-                category = await self.openai_service.recommend_webpage_category(
+                category = await self.ai_router.recommend_webpage_category(
                     summary=summary,
                     user_id=user_id  # WTU 계측을 위한 사용자 ID 전달
                 )
@@ -991,7 +991,7 @@ class ClipperService:
                     summary = self._generate_simple_summary(extracted_content, content_info['title'])
                 else:
                     # Fallback to OpenAI summary
-                    summary = await self.openai_service.generate_webpage_summary(
+                    summary = await self.ai_router.generate_webpage_summary(
                         url=request_data.url,
                         html_content=html_content[:5000],  # 길이 제한
                         max_tokens=300
