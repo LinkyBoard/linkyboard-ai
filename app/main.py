@@ -3,7 +3,6 @@ from app.collect.v1.clipper.router import router as clipper_router
 from app.board_ai.router import router as board_ai_router
 from app.user_sync.router import router as user_sync_router
 from app.admin.models.router import router as admin_models_router
-from app.board.model_policy.router import router as board_model_policy_router
 from app.core.middleware import LoggingMiddleware, ErrorHandlingMiddleware
 from app.core.logging import log
 
@@ -29,9 +28,6 @@ app.include_router(user_sync_router)
 
 # Admin - Model Management
 app.include_router(admin_models_router)
-
-# Board - Model Policy
-app.include_router(board_model_policy_router)
 
 @app.get("/")
 def read_root():
