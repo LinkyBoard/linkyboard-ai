@@ -1,9 +1,7 @@
-from sqlalchemy import JSON, Column, String, Text, DateTime, Integer, Boolean, ForeignKey, Index, Float, Date, ARRAY
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import JSON, Column, String, Text, DateTime, Integer, BigInteger, Boolean, ForeignKey, Index, Float, Date, ARRAY
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship, validates
 from pgvector.sqlalchemy import Vector
-import uuid
 
 from app.core.database import Base
 
@@ -14,7 +12,7 @@ class User(Base):
     
     # 서비스 서버의 사용자 ID와 동일한 Long 사용
     # NOTE: AI 서비스에 필요한 최소 정보만 저장, 필요한 경우 추후 추가
-    id = Column(Integer, primary_key=True, comment="서비스 서버의 사용자 ID")
+    id = Column(BigInteger, primary_key=True, comment="서비스 서버의 사용자 ID")
 
     # AI 서비스 전용 설정
     ai_preferences = Column(Text, nullable=True, comment="AI 개인화 설정 (JSON)")
@@ -43,7 +41,7 @@ class Category(Base):
     """카테고리 테이블 - 벡터 임베딩 포함"""
     __tablename__ = "categories"
     
-    id = Column(Integer, primary_key=True, autoincrement=True, comment="카테고리 ID")
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment="카테고리 ID")
     name = Column(String(100), unique=True, nullable=False, comment="카테고리명")
     # description = Column(Text, nullable=True, comment="카테고리 설명")
     embedding = Column(Vector(1536), nullable=True, comment="카테고리 임베딩 벡터")
@@ -66,7 +64,7 @@ class Tag(Base):
     """태그 테이블 - 벡터 임베딩 포함"""
     __tablename__ = "tags"
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment="태그 ID")
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment="태그 ID")
     name = Column(String(255), unique=True, nullable=False, comment="태그명")
     embedding = Column(Vector(1536), nullable=True, comment="태그 임베딩 벡터")
 
@@ -88,8 +86,8 @@ class ItemTags(Base):
     __tablename__ = "item_tags"
 
     # NOTE : 유저 아이디 추가 고려
-    item_id = Column(Integer, ForeignKey("items.id", ondelete="CASCADE"), primary_key=True)
-    tag_id = Column(Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
+    item_id = Column(BigInteger, ForeignKey("items.id", ondelete="CASCADE"), primary_key=True)
+    tag_id = Column(BigInteger, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
     relevance_score = Column(Float, default=1.0, comment="관련도 점수 (0.0-1.0)")
     source = Column(String(20), default="ai", comment="출처: ai, user")
     
@@ -104,8 +102,8 @@ class UserCategoryPreference(Base):
     """사용자 카테고리 선호도 테이블"""
     __tablename__ = "user_category_preferences"
     
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    category_id = Column(Integer, ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    category_id = Column(BigInteger, ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True)
     
     frequency_count = Column(Integer, default=1, comment="사용 빈도")
     preference_score = Column(Float, default=1.0, comment="선호도 점수")
@@ -120,13 +118,13 @@ class UserTagInteraction(Base):
     """사용자 태그 상호작용 테이블"""
     __tablename__ = "user_tag_interactions"
 
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    tag_id = Column(Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    tag_id = Column(BigInteger, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
 
     interaction_count = Column(Integer, default=1, comment="상호작용 횟수")
     preference_score = Column(Float, default=1.0, comment="선호도 점수")
     last_interaction = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    context_category_id = Column(Integer, ForeignKey("categories.id"), nullable=True, comment="상호작용 맥락 카테고리")
+    context_category_id = Column(BigInteger, ForeignKey("categories.id"), nullable=True, comment="상호작용 맥락 카테고리")
     
     # 관계 설정
     user = relationship("User")
@@ -139,11 +137,11 @@ class Item(Base):
     __tablename__ = "items"
 
     # Spring Boot와의 동기화를 위해 기존 ID 사용
-    id = Column(Integer, primary_key=True, autoincrement=False, comment="Spring Boot Item ID (동기화)")
+    id = Column(BigInteger, primary_key=True, autoincrement=False, comment="Spring Boot Item ID (동기화)")
     
     # 사용자 관계 추가
     user_id = Column(
-        Integer, 
+        BigInteger, 
         ForeignKey("users.id", ondelete="CASCADE"), 
         nullable=False, 
         index=True,
@@ -178,7 +176,7 @@ class Item(Base):
     embedding_chunks = relationship("ItemEmbeddingMetadata", back_populates="item", cascade="all, delete-orphan")
 
     # 카테고리 관계를 외래키로 변경
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True, comment="카테고리 ID")
+    category_id = Column(BigInteger, ForeignKey("categories.id"), nullable=True, comment="카테고리 ID")
     category = Column(String(100), nullable=True, comment="카테고리명 (캐시용)")
     
     # 관계 추가
@@ -248,9 +246,9 @@ class ItemEmbeddingMetadata(Base):
     """item 임베딩 메타데이터 테이블"""
     __tablename__ = "item_embedding_metadatas"
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment="임베딩 메타데이터 ID")
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment="임베딩 메타데이터 ID")
     item_id = Column(
-        Integer, 
+        BigInteger, 
         ForeignKey("items.id", ondelete="CASCADE"),
         comment="아이템 ID (외래키)"
     )
@@ -317,11 +315,11 @@ class SearchHistory(Base):
     """검색 히스토리 테이블 - 사용자 검색 기록 및 성능 분석용"""
     __tablename__ = "search_histories"
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment="검색 기록 ID")
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment="검색 기록 ID")
     
     # 사용자 관계 추가
     user_id = Column(
-        Integer, 
+        BigInteger, 
         ForeignKey("users.id", ondelete="CASCADE"), 
         nullable=False, 
         index=True,
@@ -363,16 +361,16 @@ class UsageMeter(Base):
     """WTU 사용량 계측 테이블"""
     __tablename__ = "usage_meter"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="사용량 기록 ID")
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, comment="사용자 ID")
-    run_id = Column(UUID(as_uuid=True), nullable=True, comment="실행 ID (배치 작업 시)")
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment="사용량 기록 ID")
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, comment="사용자 ID")
+    run_id = Column(BigInteger, nullable=True, comment="실행 ID (배치 작업 시)")
     
     # 사용된 모델 정보
     llm_model = Column(String(100), nullable=True, comment="사용된 LLM 모델명")
     embedding_model = Column(String(100), nullable=True, comment="사용된 임베딩 모델명")
-    selected_model_id = Column(Integer, ForeignKey("model_catalog.id", ondelete="SET NULL"), nullable=True, comment="사용자가 선택한 모델 ID")
+    selected_model_id = Column(BigInteger, ForeignKey("model_catalog.id", ondelete="SET NULL"), nullable=True, comment="사용자가 선택한 모델 ID")
     model_weights_snapshot = Column(JSON, nullable=True, comment="실행 시점의 모델 가중치 스냅샷")
-    board_id = Column(Integer, nullable=True, comment="보드 ID (정책 추적용)")
+    board_id = Column(BigInteger, nullable=True, comment="보드 ID (정책 추적용)")
     
     # 토큰 사용량
     in_tokens = Column(Integer, default=0, nullable=False, comment="입력 토큰 수")
@@ -413,11 +411,11 @@ class DedupSuggestion(Base):
     """중복 후보 제안 테이블"""
     __tablename__ = "dedup_suggestion"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="중복 제안 ID")
-    board_id = Column(Integer, nullable=False, comment="보드 ID")  # 추후 Board 테이블 생성 시 외래키로 변경
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment="중복 제안 ID")
+    board_id = Column(BigInteger, nullable=False, comment="보드 ID")  # 추후 Board 테이블 생성 시 외래키로 변경
     
     # 중복 후보 문서 ID 배열
-    doc_ids = Column(ARRAY(UUID(as_uuid=True)), nullable=False, comment="중복 후보 문서 ID 배열 (최소 2개)")
+    doc_ids = Column(ARRAY(BigInteger), nullable=False, comment="중복 후보 문서 ID 배열 (최소 2개)")
     
     # 유사도 점수 (BM25 기반 정규화)
     score = Column(Float, nullable=False, comment="유사도 점수 (0.0-1.0)")
@@ -441,7 +439,7 @@ class ModelCatalog(Base):
     """모델 카탈로그 및 WTU 가중치 테이블 (구 ModelPricing)"""
     __tablename__ = "model_catalog"
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment="모델 카탈로그 ID")
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment="모델 카탈로그 ID")
     model_name = Column(String(100), nullable=False, unique=True, comment="모델명 (예: gpt-3.5-turbo, text-embedding-3-small)")
     alias = Column(String(100), nullable=False, comment="모델 별칭 (사용자 친화적 이름)")
     provider = Column(String(50), nullable=False, default="openai", comment="모델 제공자 (openai, anthropic 등)")
@@ -516,8 +514,8 @@ class ModelWeightHistory(Base):
     """모델 가중치 변경 히스토리 테이블"""
     __tablename__ = "model_weight_history"
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment="가중치 히스토리 ID")
-    model_id = Column(Integer, ForeignKey("model_catalog.id", ondelete="CASCADE"), nullable=False, comment="모델 카탈로그 ID (외래키)")
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment="가중치 히스토리 ID")
+    model_id = Column(BigInteger, ForeignKey("model_catalog.id", ondelete="CASCADE"), nullable=False, comment="모델 카탈로그 ID (외래키)")
     w_in = Column(Float, nullable=True, comment="입력 토큰 WTU 가중치")
     w_out = Column(Float, nullable=True, comment="출력 토큰 WTU 가중치")
     w_embed = Column(Float, nullable=True, comment="임베딩 토큰 WTU 가중치")
@@ -540,9 +538,9 @@ class BoardModelPolicy(Base):
     """보드별 모델 정책 테이블"""
     __tablename__ = "board_model_policy"
 
-    board_id = Column(Integer, primary_key=True, comment="보드 ID")
-    default_model_id = Column(Integer, ForeignKey("model_catalog.id", ondelete="SET NULL"), nullable=True, comment="기본 모델 ID (외래키)")
-    allowed_model_ids = Column(ARRAY(Integer), nullable=True, comment="허용 모델 ID 배열")
+    board_id = Column(BigInteger, primary_key=True, comment="보드 ID")
+    default_model_id = Column(BigInteger, ForeignKey("model_catalog.id", ondelete="SET NULL"), nullable=True, comment="기본 모델 ID (외래키)")
+    allowed_model_ids = Column(ARRAY(BigInteger), nullable=True, comment="허용 모델 ID 배열")
     budget_wtu = Column(Integer, nullable=True, comment="월 예산 WTU")
     confidence_target = Column(Float, nullable=True, comment="품질 목표 점수 (0.0-1.0)")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
@@ -563,9 +561,9 @@ class UserModelPolicy(Base):
     """사용자별 모델 정책 테이블 (선택사항)"""
     __tablename__ = "user_model_policy"
 
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, comment="사용자 ID")
-    default_model_id = Column(Integer, ForeignKey("model_catalog.id", ondelete="SET NULL"), nullable=True, comment="기본 모델 ID (외래키)")
-    allowed_model_ids = Column(ARRAY(Integer), nullable=True, comment="허용 모델 ID 배열")
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, comment="사용자 ID")
+    default_model_id = Column(BigInteger, ForeignKey("model_catalog.id", ondelete="SET NULL"), nullable=True, comment="기본 모델 ID (외래키)")
+    allowed_model_ids = Column(ARRAY(BigInteger), nullable=True, comment="허용 모델 ID 배열")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True, comment="수정일시")
     
