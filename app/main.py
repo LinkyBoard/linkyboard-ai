@@ -5,7 +5,7 @@ from app.board_ai.router import router as board_ai_router
 from app.user_sync.router import router as user_sync_router
 from app.admin.models.router import router as admin_models_router
 from app.core.middleware import LoggingMiddleware, ErrorHandlingMiddleware
-from app.core.logging import log
+from app.core.logging import log, setup_logging
 from app.core.database import get_sync_db
 from app.core.model_catalog_init import ensure_model_catalog_initialized
 from contextlib import asynccontextmanager
@@ -13,6 +13,9 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """앱 생명주기 관리 - 시작/종료 시 실행할 작업"""
+    # 로깅 시스템 초기화 (최우선)
+    setup_logging()
+    
     # 앱 시작 시 실행
     log.info("LinkyBoard AI 서비스 시작 중...")
     
