@@ -12,6 +12,7 @@ from app.user.user_repository import UserRepository
 from app.ai.embedding.service import embedding_service
 from app.ai.classification.tag_extractor import TagExtractionService
 from app.ai.classification.category_classifier import CategoryClassificationService
+from app.ai.classification.smart_extractor import smart_extraction_service
 from app.ai.recommendation.vector_service import VectorProcessingService
 from app.ai.recommendation.user_profiling import UserProfilingService
 from app.core.models import Tag, ItemTags, Category
@@ -49,11 +50,12 @@ class ClipperService:
         self.embedding_service = embedding_service
         
         # 추천 관련 서비스들 추가
-        self.tag_extractor = TagExtractionService()
-        self.category_classifier = CategoryClassificationService()
+        self.tag_extractor = TagExtractionService()  # 기존 OpenAI 기반
+        self.category_classifier = CategoryClassificationService()  # 기존 OpenAI 기반
+        self.smart_extractor = smart_extraction_service  # 새로운 로컬 NLP 기반
         # vector_service와 user_profiling은 DB 연결이 필요하므로 메서드에서 초기화
         
-        logger.info("Clipper service initialized with recommendation services")
+        logger.info("Clipper service initialized with recommendation services (including smart extractor)")
 
     async def _process_embedding_with_monitoring(self, item_id: int, html_content: str, user_id: int = None):
         """
@@ -906,6 +908,171 @@ class ClipperService:
         await session.commit()
         logger.info(f"Successfully committed AI tags for item {item_id}")
     
+    async def generate_smart_webpage_summary_with_recommendations(
+        self,
+        session: AsyncSession,
+        request_data: SummarizeRequest,
+        user_id: int,
+        use_smart_extraction: bool = True
+    ) -> Dict:
+        """
+        스마트 추출기를 사용한 웹페이지 요약 및 추천 생성 (비용 절감 버전)
+        
+        Args:
+            session: 데이터베이스 세션
+            request_data: 요약 요청 데이터
+            user_id: 사용자 ID
+            use_smart_extraction: 스마트 추출기 사용 여부 (False면 기존 OpenAI 방식)
+            
+        Returns:
+            요약, 추천 태그, 추천 카테고리가 포함된 딕셔너리
+        """
+        logger.bind(user_id=user_id).info(
+            f"Generating smart summary for URL: {request_data.url}, "
+            f"smart_extraction: {use_smart_extraction}"
+        )
+        
+        try:
+            # HTML 파일 읽기
+            html_content = await self._read_html_file(request_data.html_file)
+            if not html_content:
+                raise ValueError("HTML 파일을 읽을 수 없습니다.")
+            
+            # 스마트 추출기 사용
+            if use_smart_extraction:
+                logger.info("Using smart extraction (cost-efficient)")
+                
+                # 스마트 추출기로 태그와 카테고리 추출
+                smart_result = await self.smart_extractor.extract_tags_and_category(
+                    html_content=html_content,
+                    url=request_data.url,
+                    user_id=user_id,
+                    max_tags=5,
+                    session=session
+                )
+                
+                # 요약은 별도로 생성하거나 콘텐츠에서 추출
+                content_info = smart_result['metadata']['content_info']
+                
+                # 간단한 요약 생성 (첫 200자 + 정제)
+                extracted_content = content_info.get('extracted_content', '')
+                if extracted_content:
+                    summary = self._generate_simple_summary(extracted_content, content_info['title'])
+                else:
+                    # Fallback to OpenAI summary
+                    summary = await self.openai_service.generate_webpage_summary(
+                        url=request_data.url,
+                        html_content=html_content[:5000],  # 길이 제한
+                        max_tokens=300
+                    )
+                
+                result = {
+                    'summary': summary,
+                    'recommended_tags': smart_result['tags'],
+                    'recommended_category': smart_result['category'],
+                    'metadata': {
+                        **smart_result['metadata'],
+                        'cost_savings': True,
+                        'processing_method': 'smart_extraction'
+                    }
+                }
+                
+                logger.info(f"Smart extraction completed - tags: {len(result['recommended_tags'])}, "
+                           f"category: {result['recommended_category']}")
+                
+                return result
+            
+            else:
+                # 기존 OpenAI 방식 사용 (fallback)
+                logger.info("Using traditional OpenAI extraction (fallback)")
+                return await self.generate_webpage_summary_with_recommendations(
+                    session=session,
+                    request_data=request_data,
+                    user_id=user_id,
+                    tag_count=5
+                )
+        
+        except Exception as e:
+            logger.error(f"Smart summary generation failed: {str(e)}")
+            
+            # 완전한 fallback: 기존 방식으로 재시도
+            try:
+                logger.info("Falling back to traditional OpenAI extraction")
+                return await self.generate_webpage_summary_with_recommendations(
+                    session=session,
+                    request_data=request_data,
+                    user_id=user_id,
+                    tag_count=5
+                )
+            except Exception as fallback_error:
+                logger.error(f"Fallback also failed: {str(fallback_error)}")
+                
+                # 최후의 수단: 기본값 반환
+                return {
+                    'summary': f"웹페이지 요약을 생성할 수 없습니다. URL: {request_data.url}",
+                    'recommended_tags': ['웹페이지'],
+                    'recommended_category': '기타',
+                    'metadata': {
+                        'processing_method': 'error_fallback',
+                        'cost_savings': False,
+                        'error': str(e)
+                    }
+                }
+    
+    def _generate_simple_summary(self, content: str, title: str = "") -> str:
+        """
+        콘텐츠에서 간단한 요약 생성 (OpenAI 없이)
+        """
+        try:
+            if not content:
+                return title if title else "콘텐츠를 요약할 수 없습니다."
+            
+            # 문장 단위로 분할
+            import re
+            sentences = re.split(r'[.!?]+', content)
+            sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 10]
+            
+            if not sentences:
+                return title if title else "콘텐츠를 요약할 수 없습니다."
+            
+            # 첫 3개 문장 또는 200자까지
+            summary_parts = []
+            total_length = 0
+            
+            for sentence in sentences[:5]:  # 최대 5개 문장 확인
+                if total_length + len(sentence) <= 200:
+                    summary_parts.append(sentence)
+                    total_length += len(sentence)
+                else:
+                    break
+            
+            if summary_parts:
+                summary = '. '.join(summary_parts)
+                if not summary.endswith('.'):
+                    summary += '.'
+                return summary
+            else:
+                # 길이 제한으로 요약
+                return content[:200].rstrip() + '...' if len(content) > 200 else content
+        
+        except Exception as e:
+            logger.warning(f"Simple summary generation failed: {e}")
+            return title if title else "요약을 생성할 수 없습니다."
+    
+    async def _read_html_file(self, html_file) -> Optional[str]:
+        """HTML 파일 읽기 (기존 메서드 활용)"""
+        try:
+            if hasattr(html_file, 'read'):
+                content = await html_file.read()
+                if isinstance(content, bytes):
+                    return content.decode('utf-8', errors='ignore')
+                return content
+            else:
+                return str(html_file)
+        except Exception as e:
+            logger.error(f"Failed to read HTML file: {e}")
+            return None
+
 # 서비스 인스턴스 생성 (싱글톤 패턴)
 clipper_service = ClipperService()
 

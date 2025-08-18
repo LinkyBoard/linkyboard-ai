@@ -19,6 +19,15 @@ loguru = "*"
 opentelemetry-api = "*"
 opentelemetry-sdk = "*"
 prometheus-client = "*"
+# NLP and Text Processing Libraries
+beautifulsoup4 = "*"
+trafilatura = "*"
+scikit-learn = "*"
+spacy = "*"
+nltk = "*"
+konlpy = "*"
+# Pattern Recognition
+textstat = "*"
 
 [dev-packages]
 pytest = "*"
