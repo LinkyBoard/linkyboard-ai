@@ -463,7 +463,7 @@ class ClipperService:
         tag_count: int = 5
     ) -> Dict:
         """
-        사용자 맞춤 추천이 포함된 유튜브 동영상 요약 생성
+        사용자 맞춤 추천이 포함된 유튜브 동영상 요약 생성 (스마트 추출 우선 사용)
         """
         logger.bind(user_id=user_id).info(f"Generating YouTube summary with recommendations for URL: {url}")
 
@@ -475,64 +475,95 @@ class ClipperService:
         )
 
         try:
-            # 2. 사용자 기반 추천 서비스 초기화
-            user_profiling = UserProfilingService(session)
+            # 2. 스마트 추출 시스템으로 태그/카테고리 추천 (비용 절약)
+            logger.info(f"Using smart extraction for YouTube content: {title[:50]}...")
             
-            # 3. 개인화된 태그 추천
-            recommended_tags = await user_profiling.recommend_tags_for_content(
-                content_text=f"{title}\n\n{summary}",
+            # YouTube 비디오 ID 추출 (URL에서)
+            video_id = self._extract_video_id_from_url(url)
+            
+            smart_result = await self.smart_extractor.extract_youtube_tags_and_category(
+                title=title,
+                transcript=transcript,
+                video_id=video_id,
                 user_id=user_id,
-                limit=tag_count
-            )
-            
-            # 4. 개인화된 카테고리 추천
-            recommended_category = await user_profiling.recommend_category_for_content(
-                content_text=f"{title}\n\n{summary}",
-                user_id=user_id
+                max_tags=tag_count,
+                session=session
             )
             
             logger.bind(user_id=user_id).info(
-                f"YouTube personalized recommendations completed: "
-                f"tags={len(recommended_tags)}, category={recommended_category}"
+                f"YouTube smart extraction completed: "
+                f"tags={len(smart_result['tags'])}, category={smart_result['category']}, "
+                f"method={smart_result['metadata']['processing_method']}"
             )
             
             return {
                 'summary': summary,
-                'recommended_tags': recommended_tags,
-                'recommended_category': recommended_category
+                'recommended_tags': smart_result['tags'],
+                'recommended_category': smart_result['category']
             }
             
-        except Exception as rec_error:
-            # 추천 실패 시 기본 AI 추천으로 폴백
-            logger.warning(f"Personalized recommendations failed, falling back to AI: {str(rec_error)}")
+        except Exception as smart_error:
+            # 스마트 추출 실패 시 사용자 프로파일링으로 폴백
+            logger.warning(f"Smart extraction failed, falling back to user profiling: {str(smart_error)}")
             
             try:
-                tags = await self.openai_service.generate_youtube_tags(
-                    title=title,
-                    summary=summary,
+                user_profiling = UserProfilingService(session)
+                
+                # 개인화된 태그 추천
+                recommended_tags = await user_profiling.recommend_tags_for_content(
+                    content_text=f"{title}\n\n{summary}",
+                    user_id=user_id,
+                    limit=tag_count
+                )
+                
+                # 개인화된 카테고리 추천
+                recommended_category = await user_profiling.recommend_category_for_content(
+                    content_text=f"{title}\n\n{summary}",
                     user_id=user_id
                 )
                 
-                category = await self.openai_service.recommend_youtube_category(
-                    title=title,
-                    summary=summary,
-                    user_id=user_id
+                logger.bind(user_id=user_id).info(
+                    f"YouTube user profiling completed: "
+                    f"tags={len(recommended_tags)}, category={recommended_category}"
                 )
                 
                 return {
                     'summary': summary,
-                    'recommended_tags': tags,
-                    'recommended_category': category
+                    'recommended_tags': recommended_tags,
+                    'recommended_category': recommended_category
                 }
                 
-            except Exception as ai_error:
-                logger.error(f"AI fallback also failed: {str(ai_error)}")
-                # 최후의 기본값
-                return {
-                    'summary': summary,
-                    'recommended_tags': ['유튜브', '동영상'],
-                    'recommended_category': 'Video'
-                }
+            except Exception as profile_error:
+                # 사용자 프로파일링 실패 시 OpenAI로 최종 폴백
+                logger.warning(f"User profiling failed, falling back to OpenAI: {str(profile_error)}")
+                
+                try:
+                    tags = await self.openai_service.generate_youtube_tags(
+                        title=title,
+                        summary=summary,
+                        user_id=user_id
+                    )
+                    
+                    category = await self.openai_service.recommend_youtube_category(
+                        title=title,
+                        summary=summary,
+                        user_id=user_id
+                    )
+                    
+                    return {
+                        'summary': summary,
+                        'recommended_tags': tags,
+                        'recommended_category': category
+                    }
+                    
+                except Exception as ai_error:
+                    logger.error(f"All fallback methods failed: {str(ai_error)}")
+                    # 최후의 기본값
+                    return {
+                        'summary': summary,
+                        'recommended_tags': ['유튜브', '동영상'],
+                        'recommended_category': 'Video'
+                    }
 
     async def generate_webpage_summary_with_recommendations(
         self,
@@ -1071,6 +1102,33 @@ class ClipperService:
                 return str(html_file)
         except Exception as e:
             logger.error(f"Failed to read HTML file: {e}")
+            return None
+    
+    def _extract_video_id_from_url(self, url: str) -> Optional[str]:
+        """YouTube URL에서 video ID를 추출합니다."""
+        try:
+            import re
+            
+            # 다양한 YouTube URL 패턴 지원
+            patterns = [
+                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)',
+                r'(?:https?:\/\/)?(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]+)',
+                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]+)',
+                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/v\/([a-zA-Z0-9_-]+)'
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, url)
+                if match:
+                    video_id = match.group(1)
+                    logger.info(f"Extracted YouTube video ID: {video_id}")
+                    return video_id
+            
+            logger.warning(f"Could not extract video ID from YouTube URL: {url}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error extracting video ID from URL {url}: {e}")
             return None
 
 # 서비스 인스턴스 생성 (싱글톤 패턴)

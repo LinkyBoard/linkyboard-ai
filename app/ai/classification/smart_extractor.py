@@ -11,23 +11,25 @@ from app.core.logging import get_logger
 from app.core.models import Item
 from app.ai.content_extraction import HTMLContentExtractor, KeywordExtractor
 from app.ai.content_extraction.recommendation_engine import RecommendationEngine
+from app.ai.content_extraction.youtube_extractor import YouTubeContentExtractor
 
 logger = get_logger(__name__)
 
 
 class SmartExtractionService:
     """
-    HTML 파싱 + NLP + 사용자 히스토리를 결합한 스마트 추출 서비스
+    HTML/YouTube 콘텐츠 파싱 + NLP + 사용자 히스토리를 결합한 스마트 추출 서비스
     OpenAI 대신 비용 효율적인 로컬 처리 방식 사용
     """
     
     def __init__(self):
         """스마트 추출 서비스 초기화"""
         self.html_extractor = HTMLContentExtractor()
+        self.youtube_extractor = YouTubeContentExtractor()
         self.keyword_extractor = KeywordExtractor()
         self.recommendation_engine = RecommendationEngine()
         
-        logger.info("SmartExtractionService initialized")
+        logger.info("SmartExtractionService initialized with HTML and YouTube extractors")
     
     async def extract_tags_and_category(
         self,
@@ -141,6 +143,132 @@ class SmartExtractionService:
         except Exception as e:
             logger.error(f"Smart extraction failed: {e}")
             return self._get_fallback_result(content_title=content_title if 'content_title' in locals() else None)
+    
+    async def extract_youtube_tags_and_category(
+        self,
+        title: str,
+        transcript: str,
+        video_id: Optional[str] = None,
+        user_id: Optional[int] = None,
+        max_tags: int = 5,
+        session: Optional[AsyncSession] = None
+    ) -> Dict[str, Any]:
+        """
+        YouTube 제목과 트랜스크립트에서 태그와 카테고리를 추출합니다.
+        
+        Args:
+            title: YouTube 비디오 제목
+            transcript: YouTube 트랜스크립트
+            video_id: YouTube 비디오 ID
+            user_id: 사용자 ID (히스토리 조회용)
+            max_tags: 최대 태그 개수
+            session: 데이터베이스 세션
+            
+        Returns:
+            태그와 카테고리 추출 결과
+        """
+        try:
+            # 1. YouTube 콘텐츠에서 핵심 정보 추출
+            logger.info(f"Extracting YouTube content - title length: {len(title)}, transcript length: {len(transcript)}")
+            content_info = self.youtube_extractor.extract_content(
+                title=title,
+                transcript=transcript,
+                video_id=video_id
+            )
+            
+            extracted_content = content_info['content']
+            content_title = content_info['title']
+            
+            if not extracted_content:
+                logger.warning("No content extracted from YouTube data")
+                return self._get_fallback_result(content_title=content_title)
+            
+            logger.info(f"YouTube content extracted: {content_info['char_count']} chars, "
+                       f"quality: {content_info['quality_score']:.2f}")
+            
+            # 2. 키워드 추출
+            logger.info("Extracting keywords from YouTube content")
+            keywords = self.keyword_extractor.extract_keywords(
+                text=extracted_content,
+                max_keywords=max_tags * 2,  # 추천 엔진에서 필터링하므로 더 많이 추출
+                min_length=2,
+                include_phrases=True
+            )
+            
+            if not keywords:
+                logger.warning("No keywords extracted from YouTube content")
+                return self._get_fallback_result(content_title=content_title)
+            
+            logger.info(f"Extracted {len(keywords)} keywords from YouTube content")
+            
+            # 3. 사용자 히스토리 조회 (있는 경우)
+            user_history_tags = []
+            user_history_categories = []
+            
+            if user_id and session:
+                user_history = await self._get_user_history(user_id, session)
+                user_history_tags = user_history['tags']
+                user_history_categories = user_history['categories']
+                
+                logger.info(f"User history for YouTube: {len(user_history_tags)} tags, "
+                           f"{len(user_history_categories)} categories")
+            
+            # 4. 태그 추천
+            recommended_tags = self.recommendation_engine.recommend_tags(
+                extracted_keywords=keywords,
+                user_history_tags=user_history_tags,
+                max_recommendations=max_tags,
+                similarity_threshold=0.3
+            )
+            
+            # 5. 카테고리 추천
+            recommended_category = self.recommendation_engine.recommend_category(
+                extracted_keywords=keywords,
+                user_history_categories=user_history_categories,
+                content_title=content_title,
+                similarity_threshold=0.4
+            )
+            
+            # 6. 결과 구성
+            result = {
+                'tags': [tag_info['tag'] for tag_info in recommended_tags],
+                'category': recommended_category['category'],
+                'metadata': {
+                    'content_info': {
+                        'title': content_title,
+                        'char_count': content_info['char_count'],
+                        'word_count': content_info['word_count'],
+                        'quality_score': content_info['quality_score'],
+                        'extraction_method': content_info['extraction_method'],
+                        'estimated_duration': content_info['metadata']['estimated_duration']
+                    },
+                    'keyword_extraction': {
+                        'keywords_found': len(keywords),
+                        'top_keywords': [kw['keyword'] for kw in keywords[:5]]
+                    },
+                    'recommendation_details': {
+                        'tags': recommended_tags,
+                        'category': recommended_category,
+                        'user_history_used': len(user_history_tags) > 0
+                    },
+                    'processing_method': 'smart_extraction_youtube',
+                    'cost_savings': True,  # OpenAI 사용하지 않음을 표시
+                    'youtube_metadata': {
+                        'video_id': video_id,
+                        'has_transcript': content_info['metadata']['has_transcript'],
+                        'transcript_length': content_info['metadata']['transcript_length']
+                    }
+                }
+            }
+            
+            logger.info(f"YouTube smart extraction completed - tags: {len(result['tags'])}, "
+                       f"category: {result['category']}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"YouTube smart extraction failed: {e}")
+            return self._get_fallback_result(content_title=title or "YouTube Video")
     
     async def extract_tags_from_summary(
         self,
@@ -317,6 +445,7 @@ class SmartExtractionService:
         """처리 통계 정보 반환"""
         return {
             'html_extractor_available': self.html_extractor.available,
+            'youtube_extractor_available': self.youtube_extractor.available,
             'keyword_extractor_capabilities': {
                 'spacy': self.keyword_extractor.spacy_available,
                 'sklearn': self.keyword_extractor.sklearn_available,
@@ -324,7 +453,8 @@ class SmartExtractionService:
             },
             'recommendation_engine_available': self.recommendation_engine.similarity_available,
             'estimated_cost_savings': '90%',  # vs OpenAI
-            'processing_time_improvement': '50%'  # vs API calls
+            'processing_time_improvement': '50%',  # vs API calls
+            'supported_content_types': ['HTML', 'YouTube']
         }
 
 
