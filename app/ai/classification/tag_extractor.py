@@ -1,18 +1,14 @@
 from typing import List
-import openai
-from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
-
-from app.core.config import settings
+from app.ai.providers.router import ai_router
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 
 class TagExtractionService:
-    """태그 추출 서비스 (기존 openai_service.py에서 이전)"""
+    """태그 추출 서비스 (AI Router 기반)"""
     
     def __init__(self):
-        self.client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         logger.info("Tag extraction service initialized")
     
     async def extract_tags_from_summary(
@@ -20,35 +16,21 @@ class TagExtractionService:
         summary: str,
         similar_tags: List[str] = None,
         tag_count: int = 5,
-        max_tokens: int = 100
+        max_tokens: int = 100,
+        user_id: int = None
     ) -> List[str]:
-        """요약문에서 태그 추출 (기존 generate_webpage_tags 메서드)"""
+        """요약문에서 태그 추출 (AI Router 기반)"""
         try:
             logger.bind(ai=True).info(f"Extracting tags from summary (length: {len(summary)})")
             
-            prompt = f"""
-            다음 웹페이지 내용을 분석하여 {tag_count}개의 태그를 생성해주세요.
-            바로 저장할 수 있도록 응답은 태그만 작성해주세요.
-            각 태그는 쉼표로 구분해주세요.
-            태그는 한글 또는 영어의 명사형 단어로 작성해주세요.
-            사용자가 이전에 저장한 유사 태그가 있다면, 그 태그도 함께 고려해주세요.
-            유사 태그: {', '.join(similar_tags) if similar_tags else '없음'}
-            
-            요약: {summary}
-            """
-            
-            response = await self.client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
-                messages=[
-                    ChatCompletionSystemMessageParam(content="당신은 웹페이지 내용을 분석하는 전문가입니다.", role="system"),
-                    ChatCompletionUserMessageParam(content=prompt, role="user")
-                ],
-                max_tokens=max_tokens,
-                temperature=0.3
+            # AI Router를 통해 태그 생성
+            tags = await ai_router.generate_webpage_tags(
+                summary=summary,
+                similar_tags=similar_tags,
+                tag_count=tag_count,
+                user_id=user_id,
+                max_tokens=max_tokens
             )
-            
-            content = response.choices[0].message.content
-            tags = [tag.strip() for tag in content.split(',') if tag.strip()]
             
             logger.bind(ai=True).info(f"Extracted {len(tags)} tags: {tags}")
             return tags

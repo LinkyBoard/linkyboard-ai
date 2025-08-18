@@ -9,7 +9,7 @@ from datetime import date
 from app.metrics.model_catalog_service import model_catalog_service
 from app.core.logging import get_logger
 from app.metrics import count_tokens
-from app.ai.openai_service import openai_service
+from app.ai.providers.router import ai_router
 from app.core.database import AsyncSessionLocal
 from app.core.models import Item
 from sqlalchemy import select
@@ -24,33 +24,21 @@ class BoardAIService:
 
     async def get_available_models(self) -> Dict[str, Any]:
         """
-        사용 가능한 모델 목록과 비용 정보 반환
+        사용 가능한 모델 목록과 비용 정보 반환 (AI Router 통합)
         """
         try:
-            # 활성 LLM 모델들 조회
-            active_models = await model_catalog_service.get_active_models("llm")
+            # AI Router를 통해 사용 가능한 모델들 조회
+            models = await ai_router.get_available_models("llm")
             
-            models = []
             default_model = None
             
-            for model in active_models:
-                # WTU 비용 계산 (1K 토큰 기준)
-                input_cost_per_1k = (model.weight_input or 1.0) * 1000
-                output_cost_per_1k = (model.weight_output or 4.0) * 1000
+            for model in models:
+                # 기본 추천 모델 설정 (가장 저렴한 모델 우선)
+                is_default = model["alias"] in ["GPT-4o Mini", "Gemini 1.5 Flash", "Claude 3 Haiku"]
+                model["is_default"] = is_default
                 
-                is_default = model.alias == "GPT-4o Mini"  # 기본 추천 모델
                 if is_default and not default_model:
-                    default_model = model.alias
-                
-                models.append({
-                    "alias": model.alias,
-                    "model_name": model.model_name,
-                    "provider": model.provider,
-                    "description": getattr(model, 'description', None),
-                    "input_cost_per_1k": input_cost_per_1k,
-                    "output_cost_per_1k": output_cost_per_1k,
-                    "is_default": is_default
-                })
+                    default_model = model["alias"]
             
             # 비용 순으로 정렬 (입력+출력 평균 비용 기준)
             models.sort(key=lambda x: (x["input_cost_per_1k"] + x["output_cost_per_1k"]) / 2)
@@ -58,7 +46,8 @@ class BoardAIService:
             return {
                 "models": models,
                 "total_count": len(models),
-                "default_model": default_model
+                "default_model": default_model,
+                "available_providers": ai_router.get_available_providers()
             }
             
         except Exception as e:
@@ -231,28 +220,29 @@ class BoardAIService:
                 {"role": "user", "content": query}
             ]
             
-            # AI 호출
-            ai_result = await openai_service.generate_chat_completion(
+            # AI Router를 통해 AI 호출
+            ai_response = await ai_router.generate_chat_completion(
                 messages=messages,
-                model=model.model_name,
+                model=model_info["model_name"],
                 max_tokens=max_output_tokens,
                 temperature=0.7,
                 user_id=user_id,
-                board_id=board_id
+                board_id=board_id,
+                session=session
             )
             
             return {
-                "answer_md": ai_result["content"],
+                "answer_md": ai_response.content,
                 "used_items": used_items,
                 "usage": {
-                    "input_tokens": ai_result["input_tokens"],
-                    "output_tokens": ai_result["output_tokens"],
-                    "total_tokens": ai_result["input_tokens"] + ai_result["output_tokens"]
+                    "input_tokens": ai_response.input_tokens,
+                    "output_tokens": ai_response.output_tokens,
+                    "total_tokens": ai_response.input_tokens + ai_response.output_tokens
                 },
                 "model_info": {
-                    "alias": model.alias,
-                    "model_name": model.model_name,
-                    "provider": model.provider
+                    "alias": model_info["alias"],
+                    "model_name": ai_response.model_used,
+                    "provider": ai_response.provider
                 }
             }
             
