@@ -70,7 +70,6 @@ async def record_embedding_usage(
         
         # 사용량 기록 생성
         usage_record = UsageMeter(
-            id=uuid.uuid4(),
             user_id=user_id,
             run_id=run_id,
             embedding_model=embedding_model,
@@ -162,7 +161,6 @@ async def record_llm_usage(
         
         # 사용량 기록 생성
         usage_record = UsageMeter(
-            id=uuid.uuid4(),
             user_id=user_id,
             run_id=run_id,
             llm_model=llm_model,
