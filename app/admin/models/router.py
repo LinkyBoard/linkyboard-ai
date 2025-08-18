@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.metrics.model_catalog_service import model_catalog_service
-from app.metrics.model_policy_service import model_policy_service
 from .schemas import (
     ModelCatalogResponse, 
     ModelCatalogCreateRequest,
@@ -198,15 +197,3 @@ async def seed_default_models(
         )
 
 
-@router.post("/clear-cache")
-async def clear_model_cache():
-    """모델 카탈로그 캐시 초기화"""
-    try:
-        model_catalog_service.clear_cache()
-        return {"message": "Model catalog cache cleared successfully"}
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to clear cache: {str(e)}"
-        )
