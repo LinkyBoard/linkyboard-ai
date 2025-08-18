@@ -23,6 +23,10 @@ from .schemas import (
     WebpageSyncResponse,
     SummarizeResponse,
 )
+from .schemas_youtube import (
+    YouTubeSyncRequest,
+    YouTubeSyncResponse,
+)
 
 logger = get_logger(__name__)
 
@@ -245,6 +249,175 @@ class ClipperService:
                 span.set_attribute("error", str(e))
                 logger.error(f"Failed to sync webpage for item {request_data.item_id}: {str(e)}")
                 raise Exception(f"저장 중 오류가 발생했습니다: {str(e)}")
+
+    async def sync_youtube(
+        self, 
+        session: AsyncSession,
+        background_tasks: BackgroundTasks,
+        request_data: YouTubeSyncRequest,
+    ) -> YouTubeSyncResponse:
+        """
+        YouTube 동영상 동기화 - transcript를 raw_content로 저장
+        """
+        async with trace_request(
+            "sync_youtube", 
+            user_id=request_data.user_id,
+            item_id=request_data.item_id,
+            url=request_data.url,
+            has_transcript=bool(request_data.transcript),
+            method="POST"
+        ) as span:
+            try:
+                logger.info(f"Syncing YouTube video for user {request_data.user_id}, item {request_data.item_id}")
+                
+                # 사용자 존재 확인 및 생성
+                user = await self.user_repository.get_or_create(session, user_id=request_data.user_id)
+                logger.bind(database=True).info(f"User {request_data.user_id} retrieved/created")
+                span.set_attribute("user_found", True)
+
+                existing_item = await self.item_repository.get_by_id(session, request_data.item_id)
+                if existing_item:
+                    logger.info(f"Updating existing YouTube item {request_data.item_id}")
+                    span.set_attribute("operation", "update")
+                    item = await self.item_repository.update(
+                        session,
+                        request_data.item_id,
+                        user_id=user.id,
+                        item_type="youtube",
+                        title=request_data.title,
+                        source_url=request_data.url,
+                        thumbnail=request_data.thumbnail,
+                        raw_content=request_data.transcript,  # YouTube 스크립트를 raw_content로 저장
+                        summary=request_data.summary,
+                        category=request_data.category,
+                        memo=request_data.memo,
+                        processing_status="raw",
+                        updated_at=func.now(),
+                    )
+                else:
+                    logger.info(f"Creating new YouTube item {request_data.item_id}")
+                    span.set_attribute("operation", "create")
+                    item = await self.item_repository.create(
+                        session,
+                        id=request_data.item_id,
+                        user_id=user.id,
+                        item_type="youtube",
+                        title=request_data.title,
+                        source_url=request_data.url,
+                        thumbnail=request_data.thumbnail,
+                        raw_content=request_data.transcript,  # YouTube 스크립트를 raw_content로 저장
+                        summary=request_data.summary,
+                        category=request_data.category,
+                        memo=request_data.memo,
+                        processing_status="raw"
+                    )
+
+                logger.bind(database=True).info(f"Item {request_data.item_id} saved with transcript length: {len(request_data.transcript)}")
+                span.set_attribute("item_saved", True)
+                span.set_attribute("transcript_length", len(request_data.transcript))
+
+                # 태그 처리 (있는 경우)
+                if request_data.tags:
+                    try:
+                        logger.info(f"Processing {len(request_data.tags)} tags for item {request_data.item_id}")
+                        for tag_name in request_data.tags:
+                            if tag_name and tag_name.strip():
+                                # 기존 태그를 찾거나 새로 생성
+                                existing_tag = await session.execute(
+                                    select(Tag).where(Tag.name == tag_name.strip())
+                                )
+                                tag = existing_tag.scalar_one_or_none()
+                                
+                                if not tag:
+                                    tag = Tag(name=tag_name.strip())
+                                    session.add(tag)
+                                    await session.flush()  # ID 생성을 위해 flush
+                                
+                                # 아이템-태그 연결 확인 및 생성
+                                existing_item_tag = await session.execute(
+                                    select(ItemTags).where(
+                                        ItemTags.item_id == item.id,
+                                        ItemTags.tag_id == tag.id
+                                    )
+                                )
+                                if not existing_item_tag.scalar_one_or_none():
+                                    item_tag = ItemTags(
+                                        item_id=item.id,
+                                        tag_id=tag.id,
+                                        source="user",
+                                        relevance_score=1.0
+                                    )
+                                    session.add(item_tag)
+                        
+                        logger.info(f"Tags processed successfully for item {request_data.item_id}")
+                        span.set_attribute("tags_processed", len(request_data.tags))
+                    except Exception as tag_error:
+                        logger.warning(f"Tag processing failed: {tag_error}")
+                        span.set_attribute("tag_processing_error", str(tag_error))
+
+                # 중복 탐지 시도 (실패해도 전체 프로세스는 계속)
+                duplicate_candidates = []
+                try:
+                    # YouTube URL로 중복 탐지
+                    candidates = await check_for_duplicates(
+                        session, 
+                        user_id=request_data.user_id,
+                        title=request_data.title,
+                        summary=request_data.summary or "",
+                        url=request_data.url
+                    )
+                    duplicate_candidates = candidates or []
+                    logger.info(f"Duplicate detection completed: {len(duplicate_candidates)} candidates found")
+                    span.set_attribute("duplicate_candidates_count", len(duplicate_candidates))
+                except Exception as dedup_error:
+                    # 중복 탐지 실패는 전체 프로세스를 방해하지 않음
+                    logger.warning(f"Duplicate detection failed: {dedup_error}")
+                    span.set_attribute("duplicate_detection_error", str(dedup_error))
+                
+                # 변경사항 커밋
+                await session.commit()
+
+                # 백그라운드 태스크로 임베딩 처리 (transcript 기반)
+                if background_tasks and request_data.transcript:
+                    background_tasks.add_task(
+                        self._process_embedding_with_monitoring,
+                        request_data.item_id,
+                        request_data.transcript,  # transcript를 임베딩 처리용으로 사용
+                        request_data.user_id
+                    )
+                    span.set_attribute("embedding_scheduled", True)
+                    logger.info(f"Background task for embedding processing added for YouTube item {request_data.item_id} (user: {request_data.user_id})")
+
+                logger.bind(database=True).info(f"YouTube item {request_data.item_id} saved successfully")
+                span.set_attribute("success", True)
+                
+                # 중복 후보를 응답에 포함
+                duplicate_response = []
+                if duplicate_candidates:
+                    from .schemas import DuplicateCandidateResponse
+                    duplicate_response = [
+                        DuplicateCandidateResponse(
+                            item_id=candidate.item_id,
+                            title=candidate.title,
+                            url=candidate.url,
+                            similarity_score=candidate.similarity_score,
+                            match_type=candidate.match_type,
+                            created_at=candidate.created_at
+                        )
+                        for candidate in duplicate_candidates
+                    ]
+                
+                return YouTubeSyncResponse(
+                    success=True,
+                    message="YouTube 동영상이 성공적으로 저장되었습니다.",
+                    duplicate_candidates=duplicate_response if duplicate_response else None
+                )
+                
+            except Exception as e:
+                span.set_attribute("success", False)
+                span.set_attribute("error", str(e))
+                logger.error(f"Failed to sync YouTube video for item {request_data.item_id}: {str(e)}")
+                raise Exception(f"YouTube 동영상 저장 중 오류가 발생했습니다: {str(e)}")
     
     async def generate_webpage_summary(self, request_data: SummarizeRequest) -> SummarizeResponse:
         """

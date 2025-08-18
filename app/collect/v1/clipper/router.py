@@ -11,6 +11,8 @@ from .schemas import (
     UserInteractionRequest,
 )
 from .schemas_youtube import (
+    YouTubeSyncRequest,
+    YouTubeSyncResponse,
     YouTubeSummarizeRequest,
     YouTubeSummarizeResponse,
 )
@@ -85,6 +87,60 @@ async def sync_webpage(
         
     except Exception as e:
         logger.error(f"Failed to sync webpage for item {item_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/youtube/sync", response_model=YouTubeSyncResponse)
+async def sync_youtube(
+    background_tasks: BackgroundTasks,
+    item_id: int = Form(..., description="Item ID"),
+    user_id: int = Form(..., description="사용자 ID"),
+    thumbnail: str = Form(..., description="썸네일 이미지 (URL)"),
+    title: str = Form(..., description="동영상 제목"),
+    url: str = Form(..., description="YouTube 동영상 URL"),
+    summary: Optional[str] = Form(None, description="동영상 요약"),
+    tags: Optional[list[str]] = Form(None, description="태그 목록"),
+    category: str = Form(..., description="카테고리"),
+    memo: Optional[str] = Form(None, description="사용자 메모"),
+    transcript: str = Form(..., description="YouTube 스크립트/자막 내용"),
+    session: AsyncSession = Depends(get_db),
+    clipper_service = Depends(get_clipper_service)
+):
+    """
+    YouTube 동영상 저장
+    
+    클라이언트로부터 YouTube 동영상의 정보와 스크립트를 받아서 저장 및 수정을 처리합니다.
+    """
+    try:
+        logger.info(f"Received YouTube sync request for item {item_id}, user {user_id}")
+        logger.info(f"YouTube transcript size: {len(transcript)} characters")
+        
+        # 요청 데이터 생성
+        request_data = YouTubeSyncRequest(
+            item_id=item_id,
+            user_id=user_id,
+            thumbnail=thumbnail,
+            title=title,
+            url=url,
+            summary=summary,
+            tags=tags or [],
+            category=category,
+            memo=memo,
+            transcript=transcript
+        )
+
+        # 서비스 레이어 호출
+        await clipper_service.sync_youtube(session, background_tasks, request_data)
+        logger.info(f"YouTube sync completed successfully for item {item_id}")
+        
+        # 성공 응답 반환
+        return YouTubeSyncResponse(
+            success=True,
+            message="YouTube 동영상이 성공적으로 동기화되었습니다."
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to sync YouTube for item {item_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
