@@ -3,7 +3,6 @@ Board AI Schemas - 선택된 아이템 기반 AI 작업 스키마
 """
 
 from typing import Optional, List, Dict, Any
-from uuid import UUID
 from pydantic import BaseModel, Field
 
 
@@ -19,7 +18,7 @@ class AskWithItemsRequest(BaseModel):
     query: str = Field(..., description="질의 내용")
     instruction: str = Field(..., description="AI에게 주는 작업 지시사항") 
     selected_items: List[SelectedItem] = Field(..., description="선택된 아이템 목록")
-    board_id: UUID = Field(..., description="보드 ID")
+    board_id: int = Field(..., description="보드 ID")
     user_id: int = Field(..., description="사용자 ID")
     model_alias: str = Field(..., description="사용할 AI 모델 별칭")
     max_output_tokens: int = Field(default=1500, description="최대 출력 토큰 수")
@@ -37,7 +36,7 @@ class DraftWithItemsRequest(BaseModel):
     """선택된 아이템 기반 초안 작성 요청 스키마"""
     requirements: str = Field(..., description="작성 요구사항 및 스타일 지시")
     selected_items: List[int] = Field(..., description="선택된 아이템 ID 목록")
-    board_id: UUID = Field(..., description="보드 ID")
+    board_id: int = Field(..., description="보드 ID")
     user_id: int = Field(..., description="사용자 ID")
     model_alias: str = Field(..., description="사용할 AI 모델 별칭")
 
@@ -54,7 +53,7 @@ class CostEstimateRequest(BaseModel):
     """비용 추정 요청 스키마"""
     selected_items: List[int] = Field(..., description="선택된 아이템 ID 목록")
     task_description: str = Field(..., description="수행할 작업 설명")
-    board_id: UUID = Field(..., description="보드 ID")
+    board_id: int = Field(..., description="보드 ID")
     user_id: int = Field(..., description="사용자 ID")
     estimated_output_tokens: int = Field(default=1500, description="예상 출력 토큰 수")
 

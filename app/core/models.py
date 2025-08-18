@@ -372,7 +372,7 @@ class UsageMeter(Base):
     embedding_model = Column(String(100), nullable=True, comment="사용된 임베딩 모델명")
     selected_model_id = Column(Integer, ForeignKey("model_catalog.id", ondelete="SET NULL"), nullable=True, comment="사용자가 선택한 모델 ID")
     model_weights_snapshot = Column(JSON, nullable=True, comment="실행 시점의 모델 가중치 스냅샷")
-    board_id = Column(UUID(as_uuid=True), nullable=True, comment="보드 ID (정책 추적용)")
+    board_id = Column(Integer, nullable=True, comment="보드 ID (정책 추적용)")
     
     # 토큰 사용량
     in_tokens = Column(Integer, default=0, nullable=False, comment="입력 토큰 수")
@@ -414,7 +414,7 @@ class DedupSuggestion(Base):
     __tablename__ = "dedup_suggestion"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="중복 제안 ID")
-    board_id = Column(UUID(as_uuid=True), nullable=False, comment="보드 ID")  # 추후 Board 테이블 생성 시 외래키로 변경
+    board_id = Column(Integer, nullable=False, comment="보드 ID")  # 추후 Board 테이블 생성 시 외래키로 변경
     
     # 중복 후보 문서 ID 배열
     doc_ids = Column(ARRAY(UUID(as_uuid=True)), nullable=False, comment="중복 후보 문서 ID 배열 (최소 2개)")
@@ -540,7 +540,7 @@ class BoardModelPolicy(Base):
     """보드별 모델 정책 테이블"""
     __tablename__ = "board_model_policy"
 
-    board_id = Column(UUID(as_uuid=True), primary_key=True, comment="보드 ID")
+    board_id = Column(Integer, primary_key=True, comment="보드 ID")
     default_model_id = Column(Integer, ForeignKey("model_catalog.id", ondelete="SET NULL"), nullable=True, comment="기본 모델 ID (외래키)")
     allowed_model_ids = Column(ARRAY(Integer), nullable=True, comment="허용 모델 ID 배열")
     budget_wtu = Column(Integer, nullable=True, comment="월 예산 WTU")

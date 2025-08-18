@@ -32,6 +32,11 @@ AsyncSessionLocal = sessionmaker(
     async_engine, class_=AsyncSession, expire_on_commit=False
 )
 
+# 동기 세션 (초기화용)
+SyncSessionLocal = sessionmaker(
+    autocommit=False, autoflush=False, bind=sync_engine
+)
+
 # Base 클래스 생성
 Base = declarative_base()
 
@@ -44,3 +49,14 @@ async def get_db():
         except Exception:
             await session.rollback()
             raise
+
+# 동기 데이터베이스 세션 (앱 초기화용)
+def get_sync_db():
+    db = SyncSessionLocal()
+    try:
+        yield db
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
