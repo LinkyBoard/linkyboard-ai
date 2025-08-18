@@ -136,13 +136,11 @@ async def draft_with_items(
         logger.info(f"AI draft-with-items request - user: {request.user_id}, board: {request.board_id}, items: {len(request.selected_items)}, model: {request.model_alias}")
         
         result = await board_ai_service.draft_with_selected_items(
-            content_type=request.content_type,
             requirements=request.requirements,
             selected_items=request.selected_items,
             board_id=request.board_id,
             user_id=request.user_id,
             model_alias=request.model_alias,
-            max_output_tokens=request.max_output_tokens,
             session=session
         )
         

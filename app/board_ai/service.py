@@ -265,13 +265,11 @@ class BoardAIService:
 
     async def draft_with_selected_items(
         self,
-        content_type: str,
         requirements: str,
-        selected_items: List[SelectedItem],
+        selected_items: List[int],
         board_id: UUID,
         user_id: int,
         model_alias: str,
-        max_output_tokens: int = 2000,
         session: Optional[AsyncSession] = None
     ) -> Dict[str, Any]:
         """
@@ -289,31 +287,32 @@ class BoardAIService:
                 raise ValueError(f"Model '{model_alias}' not found")
             
             # 선택된 아이템들의 내용 조회
-            item_ids = [item.item_id for item in selected_items]
-            if item_ids:
-                stmt = select(Item).where(Item.id.in_(item_ids))
+            if selected_items:
+                stmt = select(Item).where(Item.id.in_(selected_items))
                 result = await session.execute(stmt)
                 items = result.scalars().all()
                 items_dict = {item.id: item for item in items}
             else:
                 items_dict = {}
             
-            # 아이템 내용 구성
+            # 아이템 내용 구성 (모든 summary와 content 포함)
             source_materials = []
             used_items = []
             
-            for selected_item in selected_items:
-                item = items_dict.get(selected_item.item_id)
+            for item_id in selected_items:
+                item = items_dict.get(item_id)
                 if not item:
                     continue
                 
                 material = f"## {item.title}\n"
                 material += f"**출처:** {item.source_url}\n"
                 
-                if selected_item.include_summary and item.summary:
+                # 기본적으로 summary 포함
+                if item.summary:
                     material += f"**요약:** {item.summary}\n\n"
                 
-                if selected_item.include_content and item.raw_content:
+                # 기본적으로 content 포함
+                if item.raw_content:
                     # raw_content는 원본 콘텐츠이므로 길이 제한 (3000자)
                     content = item.raw_content[:3000] if len(item.raw_content) > 3000 else item.raw_content
                     material += f"**내용:** {content}\n\n"
@@ -323,18 +322,16 @@ class BoardAIService:
                     "item_id": item.id,
                     "title": item.title,
                     "url": item.source_url,
-                    "included_summary": selected_item.include_summary,
-                    "included_content": selected_item.include_content
+                    "included_summary": True,  # 항상 True
+                    "included_content": True   # 항상 True
                 })
             
             # AI 프롬프트 구성
             system_prompt = f"""당신은 전문적인 콘텐츠 작성자입니다. 
-제공된 자료들을 바탕으로 '{content_type}' 형식의 초안을 작성해주세요.
+제공된 자료들을 바탕으로 초안을 작성해주세요.
 
 **작성 요구사항:**
 {requirements}
-
-**콘텐츠 유형:** {content_type}
 
 **참고 자료들:**
 {chr(10).join(source_materials)}
@@ -344,19 +341,19 @@ class BoardAIService:
 2. 제공된 자료들의 내용을 적절히 활용
 3. 논리적이고 일관된 구조로 구성
 4. 참고한 자료의 출처를 명시
-5. 최대 {max_output_tokens} 토큰 내에서 작성"""
+5. 적절한 길이로 작성"""
 
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"{content_type} 초안을 작성해주세요."}
+                {"role": "user", "content": "초안을 작성해주세요."}
             ]
             
             # AI 호출
             ai_result = await openai_service.generate_chat_completion(
                 messages=messages,
                 model=model.model_name,
-                max_tokens=max_output_tokens,
-                temperature=0.8,  # 창의성을 위해 조금 높게
+                max_tokens=2000,  # 기본값으로 설정
+                temperature=0.3,  
                 user_id=user_id,
                 board_id=str(board_id)
             )
