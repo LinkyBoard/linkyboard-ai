@@ -88,25 +88,7 @@ async def create_model(
             session=db
         )
         
-        return ModelCatalogResponse(
-            id=model.id,
-            model_name=model.model_name,
-            alias=model.alias,
-            provider=model.provider,
-            model_type=model.model_type,
-            role_mask=model.role_mask,
-            status=model.status,
-            version=model.version,
-            price_input=model.price_input,
-            price_output=model.price_output,
-            price_embedding=model.price_embedding,
-            weight_input=model.weight_input,
-            weight_output=model.weight_output,
-            weight_embedding=model.weight_embedding,
-            is_active=model.is_active,
-            created_at=model.created_at,
-            updated_at=model.updated_at
-        )
+        return ModelCatalogResponse.from_orm(model)
         
     except Exception as e:
         raise HTTPException(
@@ -152,25 +134,7 @@ async def update_model(
             session=db
         )
         
-        return ModelCatalogResponse(
-            id=model.id,
-            model_name=model.model_name,
-            alias=model.alias,
-            provider=model.provider,
-            model_type=model.model_type,
-            role_mask=model.role_mask,
-            status=model.status,
-            version=model.version,
-            price_input=model.price_input,
-            price_output=model.price_output,
-            price_embedding=model.price_embedding,
-            weight_input=model.weight_input,
-            weight_output=model.weight_output,
-            weight_embedding=model.weight_embedding,
-            is_active=model.is_active,
-            created_at=model.created_at,
-            updated_at=model.updated_at
-        )
+        return ModelCatalogResponse.from_orm(model)
         
     except HTTPException:
         raise
