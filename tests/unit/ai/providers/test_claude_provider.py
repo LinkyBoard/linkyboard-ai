@@ -11,9 +11,9 @@ from app.ai.providers.interface import AIResponse
 @pytest.fixture
 def claude_provider_available():
     """사용 가능한 Claude Provider"""
-    with patch('app.ai.providers.claude_provider.anthropic') as mock_anthropic:
+    with patch('anthropic.AsyncAnthropic') as mock_anthropic:
         mock_client = AsyncMock()
-        mock_anthropic.AsyncAnthropic.return_value = mock_client
+        mock_anthropic.return_value = mock_client
         
         provider = ClaudeProvider(api_key="test-key")
         provider._anthropic_available = True
