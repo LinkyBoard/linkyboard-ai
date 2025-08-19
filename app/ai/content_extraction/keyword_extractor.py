@@ -52,17 +52,20 @@ class KeywordExtractor:
             return False
     
     def _init_sklearn(self) -> bool:
-        """scikit-learn 라이브러리 초기화"""
+        """scikit-learn 라이브러리 초기화 (lazy loading)"""
         try:
-            from sklearn.feature_extraction.text import TfidfVectorizer
-            from sklearn.metrics.pairwise import cosine_similarity
-            
-            self.TfidfVectorizer = TfidfVectorizer
-            self.cosine_similarity = cosine_similarity
+            # sklearn import를 지연시켜 테스트 시 문제 방지
+            import sklearn
+            self._sklearn_module = sklearn
             return True
             
         except ImportError:
             logger.warning("scikit-learn not available")
+            self._sklearn_module = None
+            return False
+        except Exception as e:
+            logger.warning(f"sklearn initialization failed: {e}")
+            self._sklearn_module = None
             return False
     
     def _init_konlpy(self) -> bool:
@@ -226,6 +229,12 @@ class KeywordExtractor:
     def _extract_with_tfidf(self, text: str, max_keywords: int) -> List[Tuple[str, float]]:
         """TF-IDF를 사용한 키워드 추출"""
         try:
+            # sklearn lazy loading
+            if not self.sklearn_available or not self._sklearn_module:
+                return []
+                
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            
             # 문장 단위로 분할
             sentences = re.split(r'[.!?]+', text)
             sentences = [s.strip() for s in sentences if s.strip()]
@@ -234,7 +243,7 @@ class KeywordExtractor:
                 return []
             
             # TF-IDF 벡터화
-            vectorizer = self.TfidfVectorizer(
+            vectorizer = TfidfVectorizer(
                 max_features=max_keywords * 2,
                 stop_words=None,  # 사용자 정의 불용어 사용
                 token_pattern=r'\b[가-힣a-zA-Z]{2,}\b',  # 한글, 영어 2글자 이상

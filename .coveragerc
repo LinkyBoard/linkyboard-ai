@@ -1,0 +1,56 @@
+[run]
+# 커버리지 측정 대상 소스 디렉토리
+source = app
+
+# 제외할 파일/디렉토리 패턴
+omit = 
+    */migrations/*
+    */venv/*
+    */env/*
+    */virtualenv/*
+    */.venv/*
+    tests/*
+    app/main.py
+    */conftest.py
+    */__pycache__/*
+    */site-packages/*
+
+# 브랜치 커버리지 포함
+branch = True
+
+# 병렬 실행 허용
+parallel = True
+
+[report]
+# 커버리지 리포트에서 제외할 라인
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    if settings.DEBUG
+    @abstractmethod
+    @abc.abstractmethod
+
+# 누락된 라인 표시
+show_missing = True
+
+# 정밀도 설정
+precision = 2
+
+# 최소 커버리지 임계값 (테스트 실패 기준)
+fail_under = 50
+
+[html]
+# HTML 리포트 생성 디렉토리
+directory = htmlcov
+
+# HTML 리포트 추가 정보
+title = LinkyBoard AI Coverage Report
+show_contexts = True
+
+[xml]
+# XML 리포트 출력 파일
+output = coverage.xml
