@@ -124,8 +124,8 @@ help-test:
 	@echo "🧪 BDD 기반 테스트 명령어 도움말"
 	@echo ""
 	@echo "핵심 테스트:"
-	@echo "  test                  전체 테스트 실행 (OpenAI provider만)"
-	@echo "  test-ai-providers     AI Provider 테스트 (Enhanced OpenAI + 통합)"
+	@echo "  test                  전체 테스트 실행 (모든 AI Provider 포함)"
+	@echo "  test-ai-providers     AI Provider 테스트 (OpenAI + Claude + Google)"
 	@echo "  test-quick            빠른 테스트 (핵심 기능만)"
 	@echo ""
 	@echo "상세 테스트:"
@@ -140,20 +140,20 @@ help-test:
 	@echo "  test-verbose          상세 출력 테스트"
 	@echo "  test-status           테스트 현황 확인"
 
-# 전체 테스트 (BDD 기반, OpenAI provider만)
+# 전체 테스트 (BDD 기반, 모든 AI Provider 포함)
 test:
-	@echo "🧪 BDD 기반 전체 테스트 실행 중 (OpenAI provider only)..."
-	pipenv run pytest tests/unit/ai/providers/test_openai_provider_enhanced.py \
+	@echo "🧪 BDD 기반 전체 테스트 실행 중 (모든 AI Provider 포함)..."
+	pipenv run pytest tests/unit/ai/providers/ \
 		tests/integration/test_ai_provider_simple.py \
 		tests/unit/board_ai/ \
 		tests/functional/collect/v1/clipper/ \
 		-v --tb=short
 	@echo "✅ 테스트 완료!"
 
-# AI Provider 전용 테스트 (Enhanced + 통합)
+# AI Provider 전용 테스트 (OpenAI + Claude + Google)
 test-ai-providers:
-	@echo "🤖 AI Provider BDD 테스트 실행 중..."
-	pipenv run pytest tests/unit/ai/providers/test_openai_provider_enhanced.py \
+	@echo "🤖 AI Provider BDD 테스트 실행 중 (OpenAI + Claude + Google)..."
+	pipenv run pytest tests/unit/ai/providers/ \
 		tests/integration/test_ai_provider_simple.py \
 		-v --tb=short
 	@echo "✅ AI Provider 테스트 완료!"
@@ -223,16 +223,20 @@ test-status:
 	@echo ""
 	@echo "🎯 구현 완료된 테스트:"
 	@echo "  ✅ OpenAI Provider BDD 테스트: 11개 케이스"
-	@echo "  ✅ AI Router 통합 테스트: 2개 케이스"
+	@echo "  ✅ Claude Provider 테스트: 11개 케이스"
+	@echo "  ✅ Google Provider 테스트: 12개 케이스"
+	@echo "  ✅ AI Router 통합 테스트: 9개 케이스"
+	@echo "  ✅ 간단한 통합 테스트: 2개 케이스"
 	@echo "  ✅ BDD Feature 파일: 3개"
 	@echo "  ✅ BDD Step Definitions: 3개"
 	@echo ""
-	@echo "⚠️  제한사항:"
-	@echo "  🚫 Claude Provider: anthropic 패키지 미설치"
-	@echo "  🚫 Google Provider: google-generativeai 패키지 미설치"
+	@echo "✅ 모든 Provider 활성화:"
+	@echo "  ✅ OpenAI Provider: API 키 설정됨"
+	@echo "  ✅ Claude Provider: anthropic 패키지 설치됨"
+	@echo "  ✅ Google Provider: google-generativeai 패키지 설치됨"
 	@echo ""
 	@echo "📊 실행 가능한 테스트 수:"
-	@pipenv run pytest --collect-only tests/unit/ai/providers/test_openai_provider_enhanced.py tests/integration/test_ai_provider_simple.py 2>/dev/null | grep "<Function" | wc -l | xargs echo "  총 테스트 케이스:"
+	@pipenv run pytest --collect-only tests/unit/ai/providers/ tests/integration/test_ai_provider_simple.py 2>/dev/null | grep "<Function" | wc -l | xargs echo "  총 테스트 케이스:"
 
 # AI 모델 카탈로그 관리
 .PHONY: models-check models-init models-sync-to-prod models-from-file models-test
