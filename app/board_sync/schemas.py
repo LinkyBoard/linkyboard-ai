@@ -13,8 +13,6 @@ class BoardSyncRequest(BaseModel):
     user_id: int = Field(..., description="사용자 ID")
     title: str = Field(..., description="보드 제목")
     description: Optional[str] = Field(None, description="보드 설명")
-    board_type: str = Field(default="collection", description="보드 타입")
-    visibility: str = Field(default="private", description="공개 설정")
     is_active: bool = Field(default=True, description="활성 상태")
     created_at: datetime = Field(..., description="생성 시간")
     updated_at: Optional[datetime] = Field(None, description="수정 시간")
@@ -85,3 +83,19 @@ class BoardListResponse(BaseModel):
     boards: List[Dict[str, Any]] = Field(..., description="보드 목록")
     total_count: int = Field(..., description="총 보드 수")
     analyzed_count: int = Field(..., description="분석 완료된 보드 수")
+
+
+class MemoItemCreateRequest(BaseModel):
+    """메모 아이템 생성 요청 스키마"""
+    title: str = Field(..., description="메모 제목")
+    content: str = Field(..., description="메모 내용")
+
+
+class MemoItemCreateResponse(BaseModel):
+    """메모 아이템 생성 응답 스키마"""
+    success: bool = Field(..., description="생성 성공 여부")
+    item_id: int = Field(..., description="생성된 아이템 ID")
+    board_id: int = Field(..., description="보드 ID")
+    title: str = Field(..., description="메모 제목")
+    message: str = Field(..., description="응답 메시지")
+    created_at: datetime = Field(..., description="생성 시간")

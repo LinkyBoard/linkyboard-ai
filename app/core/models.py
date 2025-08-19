@@ -600,20 +600,6 @@ class Board(Base):
     title = Column(String(200), nullable=False, comment="보드 제목")
     description = Column(Text, nullable=True, comment="보드 설명")
     
-    # 보드 타입 및 설정
-    board_type = Column(
-        String(50),
-        nullable=False,
-        default="collection",
-        comment="보드 타입: collection, project, research, study 등"
-    )
-    visibility = Column(
-        String(20),
-        nullable=False,
-        default="private",
-        comment="공개 설정: private, shared, public"
-    )
-    
     # 동기화 관리
     is_active = Column(Boolean, default=True, nullable=False, comment="활성 상태 (동기화 상태)")
     last_sync_at = Column(DateTime(timezone=True), nullable=True, comment="스프링 서버와 마지막 동기화 시간")
@@ -629,14 +615,12 @@ class Board(Base):
     
     __table_args__ = (
         Index('ix_boards_user_id', 'user_id'),
-        Index('ix_boards_user_type', 'user_id', 'board_type'),
-        Index('ix_boards_visibility', 'visibility'),
         Index('ix_boards_sync_time', 'last_sync_at'),
         Index('ix_boards_created_at', 'created_at'),
     )
     
     def __repr__(self):
-        return f"<Board(id={self.id}, title='{self.title[:30]}...', type='{self.board_type}')>"
+        return f"<Board(id={self.id}, title='{self.title[:30]}...')>"
     
     @property
     def item_count(self) -> int:

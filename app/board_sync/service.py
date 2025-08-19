@@ -14,7 +14,7 @@ from app.core.logging import get_logger
 from app.board_sync.schemas import (
     BoardSyncRequest, BoardItemSyncRequest, 
     BoardSyncResponse, BoardItemSyncResponse,
-    BoardAnalyticsResponse
+    BoardAnalyticsResponse, MemoItemCreateRequest, MemoItemCreateResponse
 )
 
 logger = get_logger(__name__)
@@ -40,8 +40,6 @@ class BoardSyncService:
                     existing_board.user_id = request.user_id
                     existing_board.title = request.title
                     existing_board.description = request.description
-                    existing_board.board_type = request.board_type
-                    existing_board.visibility = request.visibility
                     existing_board.is_active = request.is_active
                     existing_board.last_sync_at = datetime.now()
                     existing_board.updated_at = request.updated_at or datetime.now()
@@ -56,8 +54,6 @@ class BoardSyncService:
                         user_id=request.user_id,
                         title=request.title,
                         description=request.description,
-                        board_type=request.board_type,
-                        visibility=request.visibility,
                         is_active=request.is_active,
                         last_sync_at=datetime.now(),
                         created_at=request.created_at,
@@ -281,6 +277,64 @@ class BoardSyncService:
         except Exception as e:
             logger.error(f"Failed to trigger analysis for board {board_id}: {str(e)}")
             return False
+
+    async def create_memo_item(self, board_id: int, request: MemoItemCreateRequest) -> MemoItemCreateResponse:
+        """
+        메모 아이템 생성 및 보드에 연결
+        """
+        try:
+            async with AsyncSessionLocal() as session:
+                # 보드 존재 확인
+                board_result = await session.execute(
+                    select(Board).where(Board.id == board_id, Board.is_active == True)
+                )
+                board = board_result.scalar_one_or_none()
+                
+                if not board:
+                    raise ValueError(f"Board {board_id} not found or inactive")
+                
+                # 메모 아이템 생성 (clipper와 구분되는 단순한 구조)
+                memo_item = Item(
+                    title=request.title,
+                    content=request.content,
+                    summary=request.content[:200] + "..." if len(request.content) > 200 else request.content,
+                    source_type="memo",  # clipper와 구분
+                    source_url=None,     # URL 없음
+                    raw_content=request.content,
+                    categories=None,     # 카테고리 없음
+                    tags=None,          # 태그 없음
+                    created_at=datetime.now(),
+                    updated_at=datetime.now()
+                )
+                session.add(memo_item)
+                await session.flush()  # ID 생성을 위해 flush
+                
+                # 보드-아이템 관계 생성
+                board_item = BoardItem(
+                    board_id=board_id,
+                    item_id=memo_item.id,
+                    added_at=datetime.now()
+                )
+                session.add(board_item)
+                
+                await session.commit()
+                
+                logger.info(f"Created memo item {memo_item.id} and linked to board {board_id}")
+                
+                return MemoItemCreateResponse(
+                    success=True,
+                    item_id=memo_item.id,
+                    board_id=board_id,
+                    title=request.title,
+                    message="Memo item created successfully",
+                    created_at=memo_item.created_at
+                )
+                
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to create memo item for board {board_id}: {str(e)}")
+            raise Exception(f"메모 아이템 생성 실패: {str(e)}")
 
 
 # 싱글톤 서비스 인스턴스
