@@ -8,7 +8,8 @@ from app.core.logging import get_logger
 from app.board_sync.schemas import (
     BoardSyncRequest, BoardItemSyncRequest, BoardDeleteRequest,
     BoardSyncResponse, BoardItemSyncResponse, BoardAnalyticsResponse,
-    BoardListResponse, BoardAnalyticsRequest
+    BoardListResponse, BoardAnalyticsRequest,
+    MemoItemCreateRequest, MemoItemCreateResponse
 )
 from app.board_sync.service import board_sync_service
 
@@ -211,3 +212,37 @@ async def get_board_insights(board_id: int):
     except Exception as e:
         logger.error(f"Failed to get board insights: {str(e)}")
         raise HTTPException(status_code=500, detail=f"보드 인사이트 조회 실패: {str(e)}")
+
+
+@router.post("/{board_id}/memo-items", response_model=MemoItemCreateResponse)
+async def create_memo_item(
+    board_id: int,
+    request: MemoItemCreateRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    메모 아이템 생성
+    
+    사용자가 보드에서 직접 작성하는 메모 아이템을 생성합니다.
+    clipper와 달리 제목과 내용만 포함하며, 자동으로 보드에 연결됩니다.
+    """
+    try:
+        logger.info(f"Creating memo item for board {board_id}: {request.title[:50]}...")
+        
+        response = await board_sync_service.create_memo_item(board_id, request)
+        
+        # 메모 아이템 생성 후 보드 분석 트리거
+        if response.success:
+            background_tasks.add_task(
+                board_sync_service.trigger_board_analysis,
+                board_id,
+                False  # force_refresh=False
+            )
+        
+        return response
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Memo item creation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"메모 아이템 생성 실패: {str(e)}")
