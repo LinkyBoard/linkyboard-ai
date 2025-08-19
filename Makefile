@@ -117,33 +117,33 @@ history-prod:
 	echo "✅ Connecting to: $${POSTGRES_HOST}:$${POSTGRES_PORT}/prod" && \
 	alembic history -v
 
-# BDD 기반 테스트 명령어 (OpenAI provider만 지원)
-.PHONY: test test-unit test-functional test-verbose test-file test-cov test-bdd test-ai-providers test-integration test-quick test-status help-test
+# BDD 기반 테스트 명령어 (모든 AI Provider 지원)
+.PHONY: test test-unit test-functional test-verbose test-file test-cov test-cov-full test-bdd test-ai-providers test-integration test-quick test-status help-test
 
 help-test:
-	@echo "🧪 BDD 기반 테스트 명령어 도움말"
+	@echo "🧪 Given-When-Then 테스트 명령어 도움말"
 	@echo ""
 	@echo "핵심 테스트:"
-	@echo "  test                  전체 테스트 실행 (모든 AI Provider 포함)"
+	@echo "  test                  전체 테스트 실행 (unit + functional)"
 	@echo "  test-ai-providers     AI Provider 테스트 (OpenAI + Claude + Google)"
 	@echo "  test-quick            빠른 테스트 (핵심 기능만)"
 	@echo ""
 	@echo "상세 테스트:"
-	@echo "  test-unit             유닛 테스트 실행 (AI Provider만)"
+	@echo "  test-unit             유닛 테스트 실행 (Given-When-Then)"
+	@echo "  test-functional       기능 테스트 실행 (Given-When-Then)"
 	@echo "  test-integration      통합 테스트 실행"  
-	@echo "  test-functional       기능 테스트 실행"
-	@echo "  test-bdd              BDD 프레임워크 상태 확인"
-	@echo "  test-cov              기본 테스트 (의존성 문제로 커버리지 비활성화)"
+	@echo "  test-cov              커버리지 포함 테스트 (HTML+XML 리포트)"
+	@echo "  test-cov-full         전체 앱 커버리지 테스트 (고급)"
 	@echo ""
 	@echo "개발 도구:"
 	@echo "  test-file path=파일   특정 파일 테스트"
 	@echo "  test-verbose          상세 출력 테스트"
 	@echo "  test-status           테스트 현황 확인"
 
-# 전체 테스트 (BDD 기반, 모든 AI Provider 포함)
+# 전체 테스트 (unit + functional)
 test:
-	@echo "🧪 BDD 기반 전체 테스트 실행 중 (모든 AI Provider 포함)..."
-	pipenv run pytest tests/unit/ai/providers/ \
+	@echo "🧪 전체 테스트 실행 중 (unit + functional)..."
+	pipenv run pytest tests/unit/ tests/functional/ \
 		tests/integration/test_ai_provider_simple.py \
 		-v --tb=short
 	@echo "✅ 테스트 완료!"
@@ -169,36 +169,58 @@ test-integration:
 	@echo "🔗 통합 테스트 실행 중..."
 	pipenv run pytest tests/integration/test_ai_provider_simple.py -v
 
-# 유닛 테스트 (AI Provider만)
+# 유닛 테스트 (Given-When-Then)
 test-unit:
-	@echo "🧪 유닛 테스트 실행 중..."
-	pipenv run pytest tests/unit/ai/providers/ -v
+	@echo "🧪 유닛 테스트 실행 중 (Given-When-Then)..."
+	pipenv run pytest tests/unit/ -v
 
-# 기능 테스트 (해당 디렉토리가 존재하는 경우만)
+# 기능 테스트 (Given-When-Then)
 test-functional:
-	@echo "🧪 기능 테스트 실행 중..."
-	@if [ -d "tests/functional" ]; then \
-		pipenv run pytest tests/functional/ -v; \
-	else \
-		echo "⚠️  tests/functional 디렉토리가 존재하지 않습니다"; \
-	fi
+	@echo "🧪 기능 테스트 실행 중 (Given-When-Then)..."
+	pipenv run pytest tests/functional/ -v
 
-# BDD 프레임워크 상태 확인
-test-bdd:
-	@echo "🎭 BDD 프레임워크 상태 확인..."
-	@echo "✅ pytest-bdd 설치됨"
-	@find tests/bdd/features -name "*.feature" | head -5 | xargs -I {} echo "  📄 {}"
-	@echo "✅ Feature 파일들이 tests/bdd/features/ 에 준비되어 있습니다"
-	@echo "✅ Step Definitions가 tests/bdd/step_definitions/ 에 준비되어 있습니다"
+# 테스트 구조 상태 확인
+test-status:
+	@echo "📋 Given-When-Then 테스트 구조 확인..."
+	@echo ""
+	@echo "🎯 구현된 테스트:"
+	@echo "  ✅ Unit Tests (Given-When-Then): tests/unit/"
+	@echo "  ✅ Functional Tests (Given-When-Then): tests/functional/"
+	@echo "  ✅ Integration Tests: tests/integration/"
+	@echo ""
+	@echo "📊 실행 가능한 테스트 수:"
+	@pipenv run pytest --collect-only tests/unit/ tests/functional/ tests/integration/test_ai_provider_simple.py 2>/dev/null | grep "<Function" | wc -l | xargs echo "  총 테스트 케이스:"
 
-# 커버리지 포함 테스트 (의존성 문제 회피)
+# 커버리지 포함 테스트 (unit + functional)
 test-cov:
 	@echo "📊 커버리지 테스트 실행 중..."
-	@echo "⚠️  sklearn 의존성 문제로 인해 AI Provider 테스트만 실행합니다"
-	pipenv run pytest tests/unit/ai/providers/ \
+	pipenv run pytest tests/unit/ tests/functional/ \
 		tests/integration/test_ai_provider_simple.py \
-		-v --tb=short
-	@echo "✅ AI Provider 테스트 완료 (커버리지 측정은 sklearn 의존성 문제로 건너뜀)"
+		--cov=app \
+		--cov-report=term-missing \
+		--cov-report=html:htmlcov \
+		--cov-report=xml:coverage.xml \
+		--cov-config=.coveragerc \
+		--tb=short \
+		-v
+	@echo "📊 커버리지 리포트 생성 완료:"
+	@echo "  - HTML: htmlcov/index.html"
+	@echo "  - XML: coverage.xml"
+	@echo "  - Terminal: 위 출력 참조"
+
+# 전체 앱 커버리지 테스트 (고급)
+test-cov-full:
+	@echo "📊 전체 애플리케이션 커버리지 테스트 실행 중..."
+	@echo "⚠️  주의: 전체 앱 로딩으로 인해 시간이 오래 걸릴 수 있습니다"
+	pipenv run pytest tests/ \
+		--cov=app \
+		--cov-report=term-missing \
+		--cov-report=html:htmlcov \
+		--cov-report=xml:coverage.xml \
+		--cov-config=.coveragerc \
+		--tb=short \
+		-x
+	@echo "📊 전체 커버리지 리포트 생성 완료: htmlcov/index.html"
 
 # 상세 출력 테스트
 test-verbose:
@@ -212,26 +234,6 @@ test-file:
 	@echo "🧪 파일별 테스트 실행: $(path)"
 	pipenv run pytest $(path) -v
 
-# 테스트 현황 확인
-test-status:
-	@echo "📋 BDD 테스트 현황 확인..."
-	@echo ""
-	@echo "🎯 구현 완료된 테스트:"
-	@echo "  ✅ OpenAI Provider BDD 테스트: 11개 케이스"
-	@echo "  ✅ Claude Provider 테스트: 11개 케이스"
-	@echo "  ✅ Google Provider 테스트: 12개 케이스"
-	@echo "  ✅ AI Router 통합 테스트: 9개 케이스"
-	@echo "  ✅ 간단한 통합 테스트: 2개 케이스"
-	@echo "  ✅ BDD Feature 파일: 3개"
-	@echo "  ✅ BDD Step Definitions: 3개"
-	@echo ""
-	@echo "✅ 모든 Provider 활성화:"
-	@echo "  ✅ OpenAI Provider: API 키 설정됨"
-	@echo "  ✅ Claude Provider: anthropic 패키지 설치됨"
-	@echo "  ✅ Google Provider: google-generativeai 패키지 설치됨"
-	@echo ""
-	@echo "📊 실행 가능한 테스트 수:"
-	@pipenv run pytest --collect-only tests/unit/ai/providers/ tests/integration/test_ai_provider_simple.py 2>/dev/null | grep "<Function" | wc -l | xargs echo "  총 테스트 케이스:"
 
 # AI 모델 카탈로그 관리
 .PHONY: models-check models-init models-sync-to-prod models-from-file models-test
