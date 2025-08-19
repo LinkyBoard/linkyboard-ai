@@ -5,7 +5,7 @@ AI Router 단위 테스트
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from app.ai.providers.router import AIModelRouter
-from app.ai.providers.interface import AIResponse
+from app.ai.providers.interface import AIResponse, TokenUsage
 from app.core.models import ModelCatalog
 
 
@@ -68,7 +68,7 @@ async def test_generate_chat_completion_success(ai_router, mock_model_catalog):
     
     messages = [{"role": "user", "content": "Test message"}]
     
-    with patch.object(ai_router, 'get_provider_for_model') as mock_get_provider:
+    with patch.object(ai_router, '_get_provider_for_model') as mock_get_provider:
         mock_provider = AsyncMock()
         mock_provider.generate_chat_completion.return_value = mock_response
         mock_get_provider.return_value = (mock_provider, mock_model_catalog)
@@ -122,7 +122,7 @@ async def test_generate_webpage_tags_success(ai_router, mock_model_catalog):
     
     mock_tags = ["python", "programming", "tutorial"]
     
-    with patch.object(ai_router, 'get_provider_for_model') as mock_get_provider:
+    with patch.object(ai_router, '_get_provider_for_model') as mock_get_provider:
         mock_provider = AsyncMock()
         mock_provider.generate_webpage_tags.return_value = mock_tags
         mock_provider.count_tokens.return_value = 50
@@ -145,7 +145,7 @@ async def test_recommend_webpage_category_success(ai_router, mock_model_catalog)
     
     mock_category = "Technology"
     
-    with patch.object(ai_router, 'get_provider_for_model') as mock_get_provider:
+    with patch.object(ai_router, '_get_provider_for_model') as mock_get_provider:
         mock_provider = AsyncMock()
         mock_provider.recommend_webpage_category.return_value = mock_category
         mock_provider.count_tokens.return_value = 30

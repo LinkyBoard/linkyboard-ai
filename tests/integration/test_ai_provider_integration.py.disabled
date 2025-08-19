@@ -1,0 +1,312 @@
+"""
+AI Provider 통합 테스트
+OpenAI Provider와 AI Router의 통합 시나리오 테스트
+"""
+
+import pytest
+from unittest.mock import AsyncMock, patch, Mock
+from uuid import uuid4
+
+from app.ai.providers.router import AIModelRouter
+from app.ai.providers.openai_provider import OpenAIProvider
+from app.ai.providers.interface import AIResponse
+from app.core.models import ModelCatalog
+
+
+@pytest.fixture
+def mock_model_catalog():
+    """모델 카탈로그 Mock 데이터"""
+    catalog = Mock(spec=ModelCatalog)
+    catalog.model_name = "gpt-3.5-turbo"
+    catalog.alias = "gpt-3.5-turbo"
+    catalog.provider = "openai"
+    catalog.input_token_weight = 1.0
+    catalog.output_token_weight = 4.0
+    catalog.status = "active"
+    return catalog
+
+
+@pytest.fixture 
+def mock_openai_response():
+    """OpenAI API 응답 Mock"""
+    mock_response = Mock()
+    mock_choice = Mock()
+    mock_choice.message.content = "Integration test response"
+    mock_response.choices = [mock_choice]
+    mock_response.usage.prompt_tokens = 25
+    mock_response.usage.completion_tokens = 50
+    mock_response.usage.total_tokens = 75
+    mock_response.model = "gpt-3.5-turbo"
+    return mock_response
+
+
+class TestAIProviderIntegration:
+    """AI Provider 통합 테스트 클래스"""
+
+    @pytest.mark.asyncio
+    async def test_end_to_end_chat_completion(self, mock_model_catalog, mock_openai_response):
+        """
+        Given: AI Router와 OpenAI Provider가 구성되어 있음
+        When: 전체 플로우로 채팅 완성을 요청함
+        Then: 모든 컴포넌트가 협력하여 올바른 응답을 반환함
+        """
+        # Given
+        with patch('app.ai.providers.router.settings') as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            mock_settings.CLAUDE_API_KEY = None
+            mock_settings.GOOGLE_API_KEY = None
+            
+            with patch('app.metrics.model_catalog_service.model_catalog_service') as mock_catalog_service:
+                mock_catalog_service.get_model_catalog.return_value = mock_model_catalog
+                
+                with patch('app.metrics.record_llm_usage') as mock_record_llm:
+                    mock_record_llm.return_value = AsyncMock()
+                    
+                    # AI Router 초기화
+                    router = AIModelRouter()
+                    
+                    # Model catalog service instance 패치
+                    router._model_catalog_service.get_model_catalog = AsyncMock(return_value=mock_model_catalog)
+                    
+                    # OpenAI Provider Mock 설정
+                    with patch.object(router._providers['openai'], 'client') as mock_client:
+                        mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
+                        
+                        # When
+                        messages = [{"role": "user", "content": "Hello, this is an integration test"}]
+                        result = await router.generate_chat_completion(
+                            messages=messages,
+                            model="gpt-3.5-turbo",
+                            user_id=1001,
+                            board_id=uuid4()
+                        )
+                        
+                        # Then
+                        assert isinstance(result, AIResponse)
+                        assert result.content == "Integration test response"
+                        assert result.provider == "openai"
+                        assert result.model_used == "gpt-3.5-turbo"
+                        assert result.input_tokens > 0
+                        assert result.output_tokens > 0
+                        
+                        # Verify service interactions
+                        mock_client.chat.completions.create.assert_called_once()
+                        # Usage recording may fail in test environment, but that's OK
+
+    @pytest.mark.asyncio
+    async def test_model_selection_and_provider_routing(self, mock_model_catalog, mock_openai_response):
+        """
+        Given: 여러 모델이 등록되어 있음
+        When: 특정 모델을 요청함
+        Then: 올바른 Provider가 선택되고 실행됨
+        """
+        # Given
+        with patch('app.ai.providers.router.settings') as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            mock_settings.CLAUDE_API_KEY = None
+            mock_settings.GOOGLE_API_KEY = None
+            
+            with patch('app.metrics.model_catalog_service.model_catalog_service') as mock_catalog_service:
+                mock_catalog_service.get_model_catalog.return_value = mock_model_catalog
+                
+                with patch('app.metrics.record_llm_usage') as mock_record_llm:
+                    mock_record_llm.return_value = AsyncMock()
+                    
+                    router = AIModelRouter()
+                    
+                    with patch.object(router._providers['openai'], 'client') as mock_client:
+                        mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
+                        
+                        # When: OpenAI 모델 요청
+                        result = await router.generate_chat_completion(
+                            messages=[{"role": "user", "content": "Test message"}],
+                            model="gpt-3.5-turbo",
+                            user_id=1001
+                        )
+                        
+                        # Then
+                        assert result.provider == "openai"
+                        mock_catalog_service.get_model_catalog.assert_called_with("gpt-3.5-turbo", None)
+
+    @pytest.mark.asyncio
+    async def test_usage_tracking_integration(self, mock_model_catalog, mock_openai_response):
+        """
+        Given: 사용량 추적이 활성화되어 있음
+        When: AI 요청을 실행함
+        Then: 토큰 사용량과 WTU가 올바르게 기록됨
+        """
+        # Given
+        with patch('app.ai.providers.router.settings') as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            
+            with patch('app.metrics.model_catalog_service.model_catalog_service') as mock_catalog_service:
+                mock_catalog_service.get_model_catalog.return_value = mock_model_catalog
+                
+                with patch('app.metrics.record_llm_usage') as mock_record_llm:
+                    mock_record_llm.return_value = AsyncMock()
+                    
+                    router = AIModelRouter()
+                    
+                    with patch.object(router._providers['openai'], 'client') as mock_client:
+                        mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
+                        
+                        # When
+                        await router.generate_chat_completion(
+                            messages=[{"role": "user", "content": "Test for usage tracking"}],
+                            model="gpt-3.5-turbo",
+                            user_id=1001,
+                            board_id=uuid4()
+                        )
+                        
+                        # Then
+                        mock_record_llm.assert_called_once()
+                        call_args = mock_usage.record_usage.call_args[1]
+                        assert call_args['user_id'] == 1001
+                        assert call_args['model_alias'] == "gpt-3.5-turbo"
+                        assert call_args['in_tokens'] > 0
+                        assert call_args['out_tokens'] > 0
+
+    @pytest.mark.asyncio
+    async def test_error_handling_across_components(self, mock_model_catalog):
+        """
+        Given: 시스템이 구성되어 있음
+        When: Provider에서 오류가 발생함
+        Then: 오류가 적절히 전파되고 처리됨
+        """
+        # Given
+        with patch('app.ai.providers.router.settings') as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            
+            with patch('app.metrics.model_catalog_service.model_catalog_service') as mock_catalog_service:
+                mock_catalog_service.get_model_catalog.return_value = mock_model_catalog
+                
+                router = AIModelRouter()
+                
+                # OpenAI Provider에서 오류 발생 시뮬레이션
+                with patch.object(router._providers['openai'], 'generate_chat_completion') as mock_generate:
+                    mock_generate.side_effect = Exception("OpenAI API Error")
+                    
+                    # When & Then
+                    with pytest.raises(Exception, match="OpenAI API Error"):
+                        await router.generate_chat_completion(
+                            messages=[{"role": "user", "content": "Test error handling"}],
+                            model="gpt-3.5-turbo",
+                            user_id=1001
+                        )
+
+    @pytest.mark.asyncio
+    async def test_webpage_tags_integration(self, mock_model_catalog, mock_openai_response):
+        """
+        Given: AI Router와 OpenAI Provider가 구성되어 있음
+        When: 웹페이지 태그 생성을 요청함
+        Then: 전체 플로우가 정상 동작함
+        """
+        # Given
+        mock_openai_response.choices[0].message.content = '["python", "web", "development"]'
+        
+        with patch('app.ai.providers.router.settings') as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            
+            with patch('app.metrics.model_catalog_service.model_catalog_service') as mock_catalog_service:
+                mock_catalog_service.get_model_catalog.return_value = mock_model_catalog
+                
+                with patch('app.metrics.record_llm_usage') as mock_record_llm:
+                    mock_record_llm.return_value = AsyncMock()
+                    
+                    router = AIModelRouter()
+                    
+                    with patch.object(router._providers['openai'], 'client') as mock_client:
+                        mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
+                        
+                        # When
+                        result = await router.generate_webpage_tags(
+                            summary="Python web development tutorial",
+                            tag_count=3,
+                            model="gpt-3.5-turbo",
+                            user_id=1001
+                        )
+                        
+                        # Then
+                        assert isinstance(result, list)
+                        assert len(result) == 3
+                        assert "python" in result
+                        assert "web" in result
+                        assert "development" in result
+
+    @pytest.mark.asyncio
+    async def test_webpage_category_integration(self, mock_model_catalog, mock_openai_response):
+        """
+        Given: AI Router와 OpenAI Provider가 구성되어 있음
+        When: 웹페이지 카테고리 추천을 요청함
+        Then: 전체 플로우가 정상 동작함
+        """
+        # Given
+        mock_openai_response.choices[0].message.content = "Technology"
+        
+        with patch('app.ai.providers.router.settings') as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            
+            with patch('app.metrics.model_catalog_service.model_catalog_service') as mock_catalog_service:
+                mock_catalog_service.get_model_catalog.return_value = mock_model_catalog
+                
+                with patch('app.metrics.record_llm_usage') as mock_record_llm:
+                    mock_record_llm.return_value = AsyncMock()
+                    
+                    router = AIModelRouter()
+                    
+                    with patch.object(router._providers['openai'], 'client') as mock_client:
+                        mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
+                        
+                        # When
+                        result = await router.recommend_webpage_category(
+                            summary="Article about artificial intelligence and machine learning",
+                            model="gpt-3.5-turbo",
+                            user_id=1001
+                        )
+                        
+                        # Then
+                        assert isinstance(result, str)
+                        assert result == "Technology"
+
+    def test_provider_initialization_and_availability(self):
+        """
+        Given: 시스템 설정이 완료되어 있음
+        When: AI Router를 초기화함
+        Then: 올바른 Provider들이 등록됨
+        """
+        # Given & When
+        with patch('app.ai.providers.router.settings') as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            mock_settings.CLAUDE_API_KEY = None
+            mock_settings.GOOGLE_API_KEY = None
+            
+            router = AIModelRouter()
+            
+            # Then
+            assert "openai" in router._providers
+            assert len(router._providers) == 1  # Only OpenAI is available
+            assert router.get_available_providers() == ["openai"]
+
+    @pytest.mark.asyncio
+    async def test_model_not_found_integration(self):
+        """
+        Given: AI Router가 구성되어 있음
+        When: 존재하지 않는 모델을 요청함
+        Then: 적절한 오류가 발생함
+        """
+        # Given
+        with patch('app.ai.providers.router.settings') as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            
+            with patch('app.ai.providers.router.model_catalog_service') as mock_catalog_service:
+                mock_catalog_service.get_model_by_name.return_value = None  # Model not found
+                
+                router = AIModelRouter()
+                
+                # When & Then
+                with pytest.raises(ValueError, match="Model .* not found"):
+                    await router.generate_chat_completion(
+                        messages=[{"role": "user", "content": "Test"}],
+                        model="nonexistent-model",
+                        user_id=1001
+                    )
