@@ -659,8 +659,6 @@ class BoardItem(Base):
     
     # 보드 내에서의 아이템 정보
     added_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="보드에 추가된 시간")
-    display_order = Column(Integer, default=0, comment="보드 내 표시 순서")
-    item_context = Column(Text, nullable=True, comment="보드 내에서의 아이템 맥락 정보")
     
     # 아이템 중요도 (AI 추천에 활용)
     relevance_score = Column(Float, default=1.0, comment="보드 주제와의 관련도 점수 (0.0-1.0)")
@@ -672,7 +670,6 @@ class BoardItem(Base):
     __table_args__ = (
         Index('ix_board_items_board_id', 'board_id'),
         Index('ix_board_items_item_id', 'item_id'),
-        Index('ix_board_items_board_order', 'board_id', 'display_order'),
         Index('ix_board_items_added_at', 'added_at'),
     )
     
