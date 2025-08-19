@@ -1,3 +1,4 @@
+from typing import List, Dict, Any
 from sqlalchemy import JSON, Column, String, Text, DateTime, Integer, BigInteger, Boolean, ForeignKey, Index, Float, Date, ARRAY
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship, validates
@@ -577,3 +578,215 @@ class UserModelPolicy(Base):
 
     def __repr__(self):
         return f"<UserModelPolicy(user_id={self.user_id}, default_model_id={self.default_model_id})>"
+
+
+class Board(Base):
+    """토픽 보드 테이블 - 스프링 서버와 동기화"""
+    __tablename__ = "boards"
+    
+    # 스프링 서버의 보드 ID와 동기화
+    id = Column(BigInteger, primary_key=True, autoincrement=False, comment="Spring Boot Board ID (동기화)")
+    
+    # 사용자 관계
+    user_id = Column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="사용자 ID (외래키)"
+    )
+    
+    # 기본 정보
+    title = Column(String(200), nullable=False, comment="보드 제목")
+    description = Column(Text, nullable=True, comment="보드 설명")
+    
+    # 보드 타입 및 설정
+    board_type = Column(
+        String(50),
+        nullable=False,
+        default="collection",
+        comment="보드 타입: collection, project, research, study 등"
+    )
+    visibility = Column(
+        String(20),
+        nullable=False,
+        default="private",
+        comment="공개 설정: private, shared, public"
+    )
+    
+    # 동기화 관리
+    is_active = Column(Boolean, default=True, nullable=False, comment="활성 상태 (동기화 상태)")
+    last_sync_at = Column(DateTime(timezone=True), nullable=True, comment="스프링 서버와 마지막 동기화 시간")
+    
+    # 시간 정보
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True, comment="수정일시")
+    
+    # 관계 설정
+    user = relationship("User")
+    board_items = relationship("BoardItem", back_populates="board", cascade="all, delete-orphan")
+    board_analytics = relationship("BoardAnalytics", back_populates="board", uselist=False, cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index('ix_boards_user_id', 'user_id'),
+        Index('ix_boards_user_type', 'user_id', 'board_type'),
+        Index('ix_boards_visibility', 'visibility'),
+        Index('ix_boards_sync_time', 'last_sync_at'),
+        Index('ix_boards_created_at', 'created_at'),
+    )
+    
+    def __repr__(self):
+        return f"<Board(id={self.id}, title='{self.title[:30]}...', type='{self.board_type}')>"
+    
+    @property
+    def item_count(self) -> int:
+        """보드에 포함된 아이템 수"""
+        return len(self.board_items)
+    
+    @property
+    def is_analyzed(self) -> bool:
+        """분석이 완료되었는지 확인"""
+        return self.board_analytics is not None
+
+
+class BoardItem(Base):
+    """보드-아이템 관계 테이블"""
+    __tablename__ = "board_items"
+    
+    # 복합 기본키
+    board_id = Column(BigInteger, ForeignKey("boards.id", ondelete="CASCADE"), primary_key=True)
+    item_id = Column(BigInteger, ForeignKey("items.id", ondelete="CASCADE"), primary_key=True)
+    
+    # 보드 내에서의 아이템 정보
+    added_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="보드에 추가된 시간")
+    display_order = Column(Integer, default=0, comment="보드 내 표시 순서")
+    item_context = Column(Text, nullable=True, comment="보드 내에서의 아이템 맥락 정보")
+    
+    # 아이템 중요도 (AI 추천에 활용)
+    relevance_score = Column(Float, default=1.0, comment="보드 주제와의 관련도 점수 (0.0-1.0)")
+    
+    # 관계 설정
+    board = relationship("Board", back_populates="board_items")
+    item = relationship("Item")
+    
+    __table_args__ = (
+        Index('ix_board_items_board_id', 'board_id'),
+        Index('ix_board_items_item_id', 'item_id'),
+        Index('ix_board_items_board_order', 'board_id', 'display_order'),
+        Index('ix_board_items_added_at', 'added_at'),
+    )
+    
+    def __repr__(self):
+        return f"<BoardItem(board_id={self.board_id}, item_id={self.item_id}, relevance={self.relevance_score})>"
+
+
+class BoardAnalytics(Base):
+    """보드 분석 정보 테이블 - AI 분석 결과 저장"""
+    __tablename__ = "board_analytics"
+    
+    board_id = Column(BigInteger, ForeignKey("boards.id", ondelete="CASCADE"), primary_key=True)
+    
+    # 주제 분석 결과
+    topic_embedding = Column(Vector(1536), nullable=True, comment="보드 주제 임베딩 벡터 (아이템들의 가중평균)")
+    content_summary = Column(Text, nullable=True, comment="보드 전체 내용 요약")
+    
+    # 카테고리 및 태그 분포
+    dominant_categories = Column(JSON, nullable=True, comment="주요 카테고리 분포 {category: count}")
+    tag_distribution = Column(JSON, nullable=True, comment="태그 분포 {tag: weight}")
+    
+    # 통계 정보
+    total_items = Column(Integer, default=0, comment="총 아이템 수")
+    total_content_length = Column(Integer, default=0, comment="전체 콘텐츠 길이")
+    avg_item_relevance = Column(Float, default=0.0, comment="평균 아이템 관련도")
+    
+    # 품질 지표
+    content_diversity_score = Column(Float, nullable=True, comment="콘텐츠 다양성 점수 (0.0-1.0)")
+    topic_coherence_score = Column(Float, nullable=True, comment="주제 일관성 점수 (0.0-1.0)")
+    
+    # 분석 메타데이터
+    analytics_version = Column(String(20), nullable=False, default="1.0", comment="분석 알고리즘 버전")
+    last_analyzed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="마지막 분석 시간")
+    
+    # 관계 설정
+    board = relationship("Board", back_populates="board_analytics")
+    
+    __table_args__ = (
+        Index('ix_board_analytics_analyzed_at', 'last_analyzed_at'),
+        Index('ix_board_analytics_version', 'analytics_version'),
+    )
+    
+    def __repr__(self):
+        return f"<BoardAnalytics(board_id={self.board_id}, items={self.total_items}, coherence={self.topic_coherence_score})>"
+    
+    @property
+    def is_stale(self) -> bool:
+        """분석 결과가 오래되었는지 확인 (24시간 기준)"""
+        from datetime import datetime, timedelta
+        if not self.last_analyzed_at:
+            return True
+        return datetime.now() - self.last_analyzed_at > timedelta(hours=24)
+    
+    @property
+    def top_categories(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """상위 카테고리 목록 반환"""
+        if not self.dominant_categories:
+            return []
+        
+        items = list(self.dominant_categories.items())
+        items.sort(key=lambda x: x[1], reverse=True)
+        return [{"category": cat, "count": count} for cat, count in items[:limit]]
+    
+    @property
+    def top_tags(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """상위 태그 목록 반환"""
+        if not self.tag_distribution:
+            return []
+        
+        items = list(self.tag_distribution.items())
+        items.sort(key=lambda x: x[1], reverse=True)
+        return [{"tag": tag, "weight": weight} for tag, weight in items[:limit]]
+
+
+class BoardRecommendationCache(Base):
+    """보드별 추천 결과 캐시 테이블"""
+    __tablename__ = "board_recommendation_cache"
+    
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    board_id = Column(BigInteger, ForeignKey("boards.id", ondelete="CASCADE"), nullable=False)
+    
+    # 추천 타입 및 결과
+    recommendation_type = Column(
+        String(50),
+        nullable=False,
+        comment="추천 타입: related_boards, suggested_items, insights, trends"
+    )
+    recommendations = Column(JSON, nullable=False, comment="추천 결과 JSON")
+    
+    # 캐시 관리
+    generated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성 시간")
+    expires_at = Column(DateTime(timezone=True), nullable=False, comment="만료 시간")
+    cache_version = Column(String(20), nullable=False, default="1.0", comment="캐시 버전")
+    
+    # 성능 메트릭
+    generation_time_ms = Column(Integer, nullable=True, comment="생성 소요 시간 (밀리초)")
+    confidence_score = Column(Float, nullable=True, comment="추천 신뢰도 점수")
+    
+    __table_args__ = (
+        Index('ix_board_recommendation_cache_board_type', 'board_id', 'recommendation_type'),
+        Index('ix_board_recommendation_cache_expires_at', 'expires_at'),
+        Index('ix_board_recommendation_cache_generated_at', 'generated_at'),
+    )
+    
+    def __repr__(self):
+        return f"<BoardRecommendationCache(board_id={self.board_id}, type='{self.recommendation_type}')>"
+    
+    @property
+    def is_expired(self) -> bool:
+        """캐시가 만료되었는지 확인"""
+        from datetime import datetime
+        return datetime.now() > self.expires_at
+    
+    @property
+    def is_valid(self) -> bool:
+        """캐시가 유효한지 확인"""
+        return not self.is_expired and self.recommendations is not None

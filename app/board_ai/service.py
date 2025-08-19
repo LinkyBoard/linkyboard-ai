@@ -223,7 +223,7 @@ class BoardAIService:
             # AI Router를 통해 AI 호출
             ai_response = await ai_router.generate_chat_completion(
                 messages=messages,
-                model=model_info["model_name"],
+                model=model.model_name,
                 max_tokens=max_output_tokens,
                 temperature=0.7,
                 user_id=user_id,
@@ -240,7 +240,7 @@ class BoardAIService:
                     "total_tokens": ai_response.input_tokens + ai_response.output_tokens
                 },
                 "model_info": {
-                    "alias": model_info["alias"],
+                    "alias": model.alias,
                     "model_name": ai_response.model_used,
                     "provider": ai_response.provider
                 }
@@ -345,26 +345,27 @@ class BoardAIService:
                 {"role": "user", "content": "제목과 초안을 JSON 형식으로 작성해주세요."}
             ]
             
-            # AI 호출
-            ai_result = await openai_service.generate_chat_completion(
+            # AI Router를 통해 AI 호출
+            ai_result = await ai_router.generate_chat_completion(
                 messages=messages,
                 model=model.model_name,
                 max_tokens=2500,  # 제목과 내용을 위해 증가
                 temperature=0.3,  
                 user_id=user_id,
-                board_id=board_id
+                board_id=board_id,
+                session=session
             )
             
             # JSON 응답 파싱 시도
             title = "초안"  # 기본 제목
-            draft_content = ai_result["content"]
+            draft_content = ai_result.content
             
             try:
                 import json
                 import re
                 
                 # JSON 부분만 추출 (```json ... ``` 형태 또는 직접 JSON)
-                content = ai_result["content"].strip()
+                content = ai_result.content.strip()
                 
                 # 코드 블록 제거
                 if content.startswith("```"):
@@ -401,9 +402,9 @@ class BoardAIService:
                 "draft_md": draft_content,
                 "used_items": used_items,
                 "usage": {
-                    "input_tokens": ai_result["input_tokens"],
-                    "output_tokens": ai_result["output_tokens"],
-                    "total_tokens": ai_result["input_tokens"] + ai_result["output_tokens"]
+                    "input_tokens": ai_result.input_tokens,
+                    "output_tokens": ai_result.output_tokens,
+                    "total_tokens": ai_result.input_tokens + ai_result.output_tokens
                 },
                 "model_info": {
                     "alias": model.alias,
@@ -418,6 +419,95 @@ class BoardAIService:
         finally:
             if close_session:
                 await session.close()
+
+    async def _trigger_board_analytics_update(self, board_id: int, user_id: int):
+        """
+        보드 AI 작업 후 분석 데이터 업데이트 트리거
+        """
+        try:
+            from app.board_analytics.service import board_analytics_service
+            
+            # 비동기로 분석 업데이트 (stale 마킹)
+            await board_analytics_service.mark_analytics_stale(board_id)
+            logger.info(f"Marked analytics as stale for board {board_id} after AI operation")
+            
+        except Exception as e:
+            logger.warning(f"Failed to trigger analytics update for board {board_id}: {str(e)}")
+
+    async def get_board_recommendations(
+        self,
+        board_id: int,
+        user_id: int,
+        recommendation_type: str = "content_gaps"
+    ) -> Dict[str, Any]:
+        """
+        보드 기반 추천 제안 생성
+        """
+        try:
+            from app.board_analytics.service import board_analytics_service
+            
+            # 보드 인사이트 조회
+            insights = await board_analytics_service.get_board_insights(board_id)
+            
+            if not insights:
+                return {
+                    "recommendations": [],
+                    "message": "분석 데이터가 부족하여 추천을 생성할 수 없습니다."
+                }
+            
+            recommendations = []
+            
+            if recommendation_type == "content_gaps":
+                # 콘텐츠 부족 영역 기반 추천
+                content_gaps = insights.get("content_gaps", [])
+                for gap in content_gaps:
+                    recommendations.append({
+                        "type": "content_improvement",
+                        "priority": "medium",
+                        "suggestion": gap,
+                        "action": "add_content"
+                    })
+            
+            elif recommendation_type == "organization":
+                # 조직화 제안 기반 추천
+                org_suggestions = insights.get("organization_suggestions", [])
+                for suggestion in org_suggestions:
+                    recommendations.append({
+                        "type": "organization",
+                        "priority": "high",
+                        "suggestion": suggestion,
+                        "action": "reorganize"
+                    })
+            
+            elif recommendation_type == "quality":
+                # 품질 개선 추천
+                quality_info = insights.get("content_quality", {})
+                if quality_info.get("level") == "낮음":
+                    recommendations.append({
+                        "type": "quality_improvement",
+                        "priority": "high",
+                        "suggestion": "콘텐츠 품질을 높이기 위해 주제 일관성과 다양성을 개선해보세요.",
+                        "action": "improve_quality",
+                        "current_score": quality_info.get("score", 0)
+                    })
+            
+            return {
+                "board_id": board_id,
+                "recommendation_type": recommendation_type,
+                "recommendations": recommendations,
+                "total_count": len(recommendations),
+                "insights_summary": {
+                    "content_quality": insights.get("content_quality", {}),
+                    "engagement_potential": insights.get("engagement_potential", {})
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to generate board recommendations: {str(e)}")
+            return {
+                "recommendations": [],
+                "error": str(e)
+            }
 
 
 # 전역 서비스 인스턴스
