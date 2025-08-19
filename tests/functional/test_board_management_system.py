@@ -128,13 +128,7 @@ class TestBoardManagementSystem:
             # Given: 보드 아이템 동기화 요청 데이터
             items_sync_data = {
                 "board_id": board.id,
-                "item_ids": [1, 2, 3],
-                "item_orders": {"1": 0, "2": 1, "3": 2},
-                "item_contexts": {
-                    "1": "AI 기초 이론",
-                    "2": "실무 적용 사례",
-                    "3": "개발 도구 가이드"
-                }
+                "item_ids": [1, 2, 3]
             }
             
             # When: 아이템 동기화 API 호출
@@ -151,19 +145,16 @@ class TestBoardManagementSystem:
             # 보드-아이템 관계가 생성되었는지 확인
             async with AsyncSessionLocal() as session:
                 result = await session.execute(
-                    select(BoardItem).where(BoardItem.board_id == board.id).order_by(BoardItem.display_order)
+                    select(BoardItem).where(BoardItem.board_id == board.id)
                 )
                 board_items = result.scalars().all()
                 assert len(board_items) == 3
                 
-                # 순서와 컨텍스트 확인
-                assert board_items[0].item_id == 1
-                assert board_items[0].display_order == 0
-                assert board_items[0].item_context == "AI 기초 이론"
-                
-                assert board_items[1].item_id == 2
-                assert board_items[1].display_order == 1
-                assert board_items[1].item_context == "실무 적용 사례"
+                # 아이템 ID 확인
+                item_ids = [item.item_id for item in board_items]
+                assert 1 in item_ids
+                assert 2 in item_ids
+                assert 3 in item_ids
 
     @patch('app.ai.providers.openai_provider.OpenAIProvider.generate_completion')
     @patch('app.ai.providers.openai_provider.OpenAIProvider.create_embeddings')
@@ -184,9 +175,7 @@ class TestBoardManagementSystem:
             for i, item in enumerate(test_data["items"]):
                 board_item = BoardItem(
                     board_id=board.id,
-                    item_id=item.id,
-                    display_order=i,
-                    item_context=f"테스트 컨텍스트 {i+1}"
+                    item_id=item.id
                 )
                 session.add(board_item)
             await session.commit()

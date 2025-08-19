@@ -107,14 +107,9 @@ class BoardSyncService:
                     item = result.scalar_one_or_none()
                     
                     if item:
-                        order = request.item_orders.get(item_id, 0) if request.item_orders else 0
-                        context = request.item_contexts.get(item_id) if request.item_contexts else None
-                        
                         board_item = BoardItem(
                             board_id=request.board_id,
                             item_id=item_id,
-                            display_order=order,
-                            item_context=context,
                             added_at=datetime.now()
                         )
                         session.add(board_item)

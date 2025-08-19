@@ -24,8 +24,6 @@ class BoardItemSyncRequest(BaseModel):
     """보드 아이템 동기화 요청 스키마"""
     board_id: int = Field(..., description="보드 ID")
     item_ids: List[int] = Field(..., description="아이템 ID 목록")
-    item_orders: Optional[Dict[int, int]] = Field(None, description="아이템별 표시 순서 {item_id: order}")
-    item_contexts: Optional[Dict[int, str]] = Field(None, description="아이템별 맥락 정보 {item_id: context}")
 
 
 class BoardDeleteRequest(BaseModel):
