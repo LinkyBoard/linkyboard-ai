@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from app.collect.v1.clipper.router import router as clipper_router
 from app.collect.v1.content.router import router as content_router
 from app.board_ai.router import router as board_ai_router
+from app.board_sync.router import router as board_sync_router
 from app.user_sync.router import router as user_sync_router
 from app.admin.models.router import router as admin_models_router
 from app.core.middleware import LoggingMiddleware, ErrorHandlingMiddleware
@@ -53,6 +54,9 @@ app.include_router(content_router)
 
 # Board AI (보드 문맥 기반 AI 작업)
 app.include_router(board_ai_router)
+
+# Board Sync (스프링 서버와 보드 동기화)
+app.include_router(board_sync_router)
 
 # User Sync (Spring Boot 사용자 동기화)
 app.include_router(user_sync_router)

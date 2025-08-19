@@ -151,3 +151,32 @@ async def draft_with_items(
     except Exception as e:
         logger.error(f"Draft-with-items request failed: {str(e)}")
         raise HTTPException(status_code=500, detail="선택된 아이템 기반 초안 작성 중 오류가 발생했습니다.")
+
+
+@router.get("/{board_id}/recommendations")
+async def get_board_recommendations(
+    board_id: int,
+    user_id: int,
+    recommendation_type: str = "content_gaps",
+    session: AsyncSession = Depends(get_db)
+):
+    """
+    보드 기반 추천 제안 조회
+    
+    보드 분석 결과를 바탕으로 콘텐츠 개선, 조직화, 품질 향상 등의 추천을 제공합니다.
+    recommendation_type: content_gaps, organization, quality
+    """
+    try:
+        logger.info(f"Board recommendations request - board: {board_id}, user: {user_id}, type: {recommendation_type}")
+        
+        result = await board_ai_service.get_board_recommendations(
+            board_id=board_id,
+            user_id=user_id,
+            recommendation_type=recommendation_type
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Board recommendations failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="보드 추천 생성 중 오류가 발생했습니다.")
