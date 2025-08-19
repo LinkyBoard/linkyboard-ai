@@ -38,9 +38,16 @@ class ModelCatalogUpdateRequest(BaseModel):
     price_embedding: Optional[float] = Field(None, description="임베딩 가격 (USD/1M)")
 
 
-class ModelCatalogResponse(ModelCatalogBase):
-    """모델 카탈로그 응답"""
+class ModelCatalogResponse(BaseModel):
+    """모델 카탈로그 응답 - ORM 모델에서 자동 변환"""
     id: int = Field(..., description="모델 ID")
+    model_name: str = Field(..., description="모델명")
+    alias: str = Field(..., description="모델 별칭")
+    provider: str = Field(..., description="모델 제공자")
+    model_type: str = Field(..., description="모델 유형")
+    role_mask: int = Field(..., description="모델 역할 마스크")
+    status: str = Field(..., description="모델 상태")
+    version: Optional[str] = Field(None, description="모델 버전")
     price_input: Optional[float] = Field(None, description="입력 토큰 가격 (USD/1M)")
     price_output: Optional[float] = Field(None, description="출력 토큰 가격 (USD/1M)")
     price_embedding: Optional[float] = Field(None, description="임베딩 가격 (USD/1M)")
@@ -59,6 +66,9 @@ class ModelListResponse(BaseModel):
     """모델 목록 응답"""
     models: List[ModelCatalogResponse] = Field(..., description="모델 목록")
     total: int = Field(..., description="총 모델 수")
+    
+    class Config:
+        from_attributes = True
 
 
 class ModelSelectionResponse(BaseModel):
