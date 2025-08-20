@@ -15,8 +15,6 @@ from .schemas_youtube import (
     YouTubeSyncResponse,
     YouTubeSummarizeRequest,
     YouTubeSummarizeResponse,
-    YouTubeUrlRequest,
-    YouTubeUrlResponse,
 )
 from .service import clipper_service, get_clipper_service
 
@@ -199,44 +197,48 @@ async def summarize_webpage(
 
 @router.post("/youtube/summarize", response_model=YouTubeSummarizeResponse)
 async def summarize_youtube(
-    url: str = Form(..., description="YouTube 동영상 URL"),
-    title: str = Form(..., description="동영상 제목"),
-    transcript: str = Form(..., description="YouTube 스크립트/자막 내용"),
-    user_id: int = Form(..., description="사용자 ID"),
-    tag_count: int = Form(default=5, description="추천 태그 수"),
+    request: YouTubeSummarizeRequest,
     session: AsyncSession = Depends(get_db),
     clipper_service = Depends(get_clipper_service)
 ):
     """
-    유튜브 동영상 요약 생성 (사용자 맞춤 추천 포함)
+    YouTube URL만으로 완전한 분석 및 요약 생성
     
-    사용자 ID에 맞춰 개인화된 태그/카테고리 추천을 포함하여 요약을 생성합니다.
+    URL에서 자동으로 메타데이터와 자막을 추출하여 요약과 추천을 제공합니다.
     """
     try:
-        logger.info(f"Received YouTube summarize request for URL: {url}")
+        logger.info(f"Received YouTube URL analysis request: {request.url}")
         
-        # 개인화된 요약 및 추천 생성
-        logger.bind(user_id=user_id).info(f"Generating personalized YouTube summary for user {user_id}")
-        
-        result = await clipper_service.generate_youtube_summary_with_recommendations(
+        # URL 분석 및 요약 생성
+        result = await clipper_service.generate_youtube_summary_from_url(
             session=session,
-            url=url,
-            title=title,
-            transcript=transcript,
-            user_id=user_id,
-            tag_count=tag_count
+            url=request.url,
+            user_id=request.user_id,
+            tag_count=request.tag_count
         )
+        
+        if not result.get('success'):
+            raise HTTPException(status_code=400, detail=result.get('error', 'YouTube 분석에 실패했습니다'))
+        
+        # 비디오 정보 추출
+        video_info = result.get('video_info', {})
+        title = video_info.get('title', 'Unknown YouTube Video')
+        thumbnail_url = video_info.get('best_thumbnail') or video_info.get('thumbnail')
         
         # YouTubeSummarizeResponse 형식으로 응답 구성
         return YouTubeSummarizeResponse(
-            summary=result['summary'],
-            tags=result['recommended_tags'],
-            category=result['recommended_category']
+            title=title,
+            summary=result.get('summary', ''),
+            tags=result.get('tags', []),
+            category=result.get('category', ''),
+            thumbnail=thumbnail_url
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to summarize YouTube video: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"유튜브 요약 생성 중 오류가 발생했습니다: {str(e)}")
+        logger.error(f"Failed to analyze YouTube URL: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"YouTube URL 분석 중 오류가 발생했습니다: {str(e)}")
 
 
 @router.post("/interaction")
@@ -265,43 +267,4 @@ async def record_user_interaction(
         raise HTTPException(status_code=500, detail="상호작용 기록 중 오류가 발생했습니다.")
 
 
-@router.post("/youtube/analyze-url", response_model=YouTubeUrlResponse)
-async def analyze_youtube_url(
-    request: YouTubeUrlRequest,
-    session: AsyncSession = Depends(get_db),
-    clipper_service = Depends(get_clipper_service)
-):
-    """
-    YouTube URL만으로 완전한 분석 및 요약 생성
-    
-    URL에서 자동으로 메타데이터와 자막을 추출하여 요약과 추천을 제공합니다.
-    """
-    try:
-        logger.info(f"Received YouTube URL analysis request: {request.url}")
-        
-        # URL 분석 및 요약 생성
-        result = await clipper_service.generate_youtube_summary_from_url(
-            session=session,
-            url=request.url,
-            user_id=request.user_id,
-            tag_count=request.tag_count
-        )
-        
-        # 응답 구성
-        return YouTubeUrlResponse(
-            success=result['success'],
-            video_info=result.get('video_info'),
-            transcript_info=result.get('transcript_info'),
-            summary=result.get('summary'),
-            tags=result.get('tags'),
-            category=result.get('category'),
-            error=result.get('error')
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to analyze YouTube URL: {str(e)}")
-        return YouTubeUrlResponse(
-            success=False,
-            error=f"YouTube URL 분석 중 오류가 발생했습니다: {str(e)}"
-        )
 
