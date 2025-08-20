@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
 from fastapi import BackgroundTasks
@@ -1174,20 +1174,37 @@ class ClipperService:
             metadata = complete_info['metadata']
             transcript_info = complete_info['transcript']
             
-            # 2. 추출된 정보 검증
-            if not transcript_info.get('success') or not transcript_info.get('transcript'):
-                logger.warning(f"No transcript available for {url}")
-                return {
-                    'success': False,
-                    'error': '자막을 사용할 수 없는 동영상입니다.',
+            # 2. 자막 사용 가능 여부 확인 및 대안 처리
+            has_transcript = transcript_info.get('success') and transcript_info.get('transcript')
+            
+            if not has_transcript:
+                logger.info(f"No transcript available for {url}, using metadata-only analysis")
+                
+                # 자막이 없는 경우 메타데이터만으로 요약 생성
+                summary_result = await self.generate_youtube_summary_from_metadata_only(
+                    session=session,
+                    url=url,
+                    metadata=metadata,
+                    user_id=user_id,
+                    tag_count=tag_count
+                )
+                
+                # 자막 없음을 명시한 결과 반환
+                result = {
+                    'success': True,
                     'video_info': metadata,
                     'transcript_info': transcript_info,
-                    'summary': None,
-                    'tags': None,
-                    'category': None
+                    'summary': summary_result.get('summary', ''),
+                    'tags': summary_result.get('recommended_tags', []),
+                    'category': summary_result.get('recommended_category', ''),
+                    'analysis_method': 'metadata_only',
+                    'warning': '자막이 제공되지 않아 제목, 설명 등 메타데이터만으로 분석되었습니다.'
                 }
+                
+                logger.info(f"Metadata-only analysis completed for: {metadata.get('title', 'Unknown')[:50]}...")
+                return result
             
-            # 3. 요약 및 추천 생성
+            # 3. 자막이 있는 경우 일반 요약 및 추천 생성
             logger.info(f"Generating summary and recommendations for: {metadata.get('title', 'Unknown')[:50]}...")
             
             summary_result = await self.generate_youtube_summary_with_recommendations(
@@ -1199,7 +1216,7 @@ class ClipperService:
                 tag_count=tag_count
             )
             
-            # 4. 완전한 결과 반환
+            # 4. 완전한 결과 반환 (자막 사용 가능한 경우)
             result = {
                 'success': True,
                 'video_info': metadata,
@@ -1207,11 +1224,13 @@ class ClipperService:
                 'summary': summary_result.get('summary'),
                 'tags': summary_result.get('recommended_tags'),
                 'category': summary_result.get('recommended_category'),
+                'analysis_method': 'full_transcript',
                 'extraction_metadata': {
                     'extraction_timestamp': complete_info.get('extraction_timestamp'),
                     'transcript_language': transcript_info.get('language'),
                     'is_auto_generated': transcript_info.get('is_auto_generated'),
-                    'available_languages': transcript_info.get('available_languages', [])
+                    'available_languages': transcript_info.get('available_languages', []),
+                    'extraction_method': transcript_info.get('extraction_method')
                 }
             }
             
@@ -1229,6 +1248,166 @@ class ClipperService:
                 'tags': None,
                 'category': None
             }
+    
+    async def generate_youtube_summary_from_metadata_only(
+        self,
+        session: AsyncSession,
+        url: str,
+        metadata: Dict[str, Any],
+        user_id: int,
+        tag_count: int = 5
+    ) -> Dict:
+        """
+        자막 없이 메타데이터만으로 YouTube 비디오 요약 생성
+        
+        Args:
+            session: 데이터베이스 세션
+            url: YouTube URL
+            metadata: 비디오 메타데이터
+            user_id: 사용자 ID
+            tag_count: 추천 태그 수
+            
+        Returns:
+            메타데이터 기반 요약 결과
+        """
+        try:
+            logger.info(f"Generating metadata-only summary for: {metadata.get('title', 'Unknown')[:50]}...")
+            
+            # 메타데이터에서 사용 가능한 정보 추출
+            title = metadata.get('title', '')
+            description = metadata.get('description', '')[:500]  # 설명이 너무 길면 자르기
+            tags = metadata.get('tags', [])
+            categories = metadata.get('categories', [])
+            channel = metadata.get('channel', metadata.get('uploader', ''))
+            
+            # 메타데이터 결합 콘텐츠 생성
+            metadata_content = self._create_metadata_content(metadata)
+            
+            # AI 요약 생성 (한국어 지정)
+            ai_prompt = f"""
+            YouTube 비디오의 메타데이터를 분석하여 한국어로 요약해주세요.
+            자막이 없어 제목, 설명, 태그 등 제한된 정보만 사용할 수 있습니다.
+            
+            비디오 정보:
+            {metadata_content}
+            
+            요구사항:
+            1. 제목과 설명을 기반으로 한국어로 2-3문장 요약 생성
+            2. 자막이 없어 제한적임을 명시
+            3. 반드시 한국어로 작성
+            
+            예시 형식:
+            "제목과 설명을 바탕으로 이 비디오는... 대해 다룹니다. 자막이 제공되지 않아 상세한 내용을 살펴볼 수 없었지만, 주요 주제는...일 것으로 추정됩니다."
+            """
+            
+            # AI 요약 생성
+            summary = await self.ai_service.generate_summary_with_context(ai_prompt, metadata_content)
+            
+            # 사용자 프로필링 및 추천 시스템 활용
+            user_profile = await self.user_profiling.get_user_profile_summary(session, user_id)
+            
+            # 메타데이터 기반 태그 및 카테고리 추천
+            ai_tags_prompt = f"""
+            YouTube 비디오의 메타데이터를 바탕으로 한국어 태그 {tag_count}개를 추천해주세요.
+            
+            비디오 정보:
+            {metadata_content}
+            
+            사용자 관심사: {user_profile.get('interests', '')}
+            
+            요구사항:
+            1. 반드시 한국어로 작성
+            2. 쉽표나 따옴표 없이 태그만 나열 (,로 구분)
+            3. 사용자 관심사 고려
+            
+            예시: 기술, 개발, 프로그래밍, AI, 머신러닝
+            """
+            
+            ai_tags = await self.ai_service.generate_tags(ai_tags_prompt, metadata_content, tag_count)
+            
+            # 카테고리 추천
+            category_prompt = f"""
+            YouTube 비디오의 메타데이터를 바탕으로 적절한 한국어 카테고리를 추천해주세요.
+            
+            비디오 정보:
+            {metadata_content}
+            
+            사용자 관심사: {user_profile.get('interests', '')}
+            
+            요구사항:
+            1. 반드시 한국어로 작성
+            2. 단일 카테고리만 반환 (예: 기술, 교육, 엔터테인먼트 등)
+            """
+            
+            ai_category = await self.ai_service.generate_category(category_prompt, metadata_content)
+            
+            # 기존 사용자 태그/카테고리 형식으로 조정
+            recommended_tags = self._rank_tags_by_user_preference(
+                ai_tags, 
+                user_profile.get('preferred_tags', []),
+                tag_count
+            )
+            
+            result = {
+                'summary': summary,
+                'recommended_tags': recommended_tags,
+                'recommended_category': ai_category,
+                'user_profile_applied': True,
+                'metadata_sources': {
+                    'title': bool(title),
+                    'description': bool(description),
+                    'tags': len(tags) > 0,
+                    'categories': len(categories) > 0,
+                    'channel': bool(channel)
+                }
+            }
+            
+            logger.info(f"Metadata-only analysis completed: summary={len(summary)} chars, "
+                       f"tags={len(recommended_tags)}, category='{ai_category}'")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to generate metadata-only summary: {str(e)}")
+            # 오류시에도 기본적인 정보는 제공
+            return {
+                'summary': f"자막이 없는 YouTube 비디오입니다. 제목: {metadata.get('title', '알 수 없음')}",
+                'recommended_tags': ['비디오'],
+                'recommended_category': '일반',
+                'user_profile_applied': False,
+                'error': str(e)
+            }
+    
+    def _create_metadata_content(self, metadata: Dict[str, Any]) -> str:
+        """메타데이터를 기반으로 콘텐츠 생성"""
+        parts = []
+        
+        if metadata.get('title'):
+            parts.append(f"제목: {metadata['title']}")
+        
+        if metadata.get('description'):
+            description = metadata['description'][:300]  # 설명 제한
+            if len(metadata['description']) > 300:
+                description += "..."
+            parts.append(f"설명: {description}")
+        
+        if metadata.get('channel') or metadata.get('uploader'):
+            channel = metadata.get('channel', metadata.get('uploader'))
+            parts.append(f"채널: {channel}")
+        
+        if metadata.get('tags'):
+            tags = metadata['tags'][:10]  # 태그 10개만 사용
+            parts.append(f"태그: {', '.join(tags)}")
+        
+        if metadata.get('categories'):
+            parts.append(f"카테고리: {', '.join(metadata['categories'])}")
+        
+        if metadata.get('duration_formatted'):
+            parts.append(f"재생시간: {metadata['duration_formatted']}")
+        
+        if metadata.get('view_count'):
+            parts.append(f"조회수: {metadata['view_count']:,}만번")
+        
+        return "\n\n".join(parts)
 
 # 서비스 인스턴스 생성 (싱글톤 패턴)
 clipper_service = ClipperService()

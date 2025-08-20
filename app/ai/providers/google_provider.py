@@ -246,14 +246,23 @@ URL: {url}"""
         try:
             logger.bind(ai=True).info(f"Generating YouTube summary with Google for video: {title[:50]}...")
             
-            prompt = f"""다음 YouTube 동영상의 제목과 스크립트를 분석하여 핵심 내용을 요약해주세요.
-요약은 동영상의 주요 내용, 핵심 메시지, 중요한 정보를 포함해야 합니다.
-요약은 한국어로 작성하고, 3-5문장으로 간결하게 작성해주세요.
+            prompt = f"""다양한 언어의 YouTube 비디오 자막을 한국어로 요약하는 작업입니다.
 
-제목: {title}
+작업 지침:
+아래 내용을 완전히 이해하고, 어떤 언어이든 상관없이 자연스러운 한국어로 요약해주세요.
 
-스크립트:
-{transcript[:3000]}"""
+동영상 제목: {title}
+
+자막 콘텐츠:
+{transcript[:3000]}
+
+요약 요구사항:
+• 자막이 영어, 일본어, 중국어, 프랑스어, 독일어, 스페인어 등 어떤 언어이든 상관없이 내용을 완전히 파악하여 한국어로 재작성
+• 3-5문장의 자연스럽고 이해하기 쉬운 한국어 요약
+• 동영상의 핵심 내용, 주요 메시지, 중요 정보를 모두 포함
+• 전문적이고 가독성 높은 한국어 표현 사용
+
+❌ 금지사항: 영어, 일본어 등 한국어 이외의 언어 사용 절대 금지. 반드시 한국어로만 작성."""
             
             gemini_model = self._genai.GenerativeModel(model)
             generation_config = self._genai.types.GenerationConfig(
