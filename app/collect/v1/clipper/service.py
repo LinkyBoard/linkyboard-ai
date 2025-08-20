@@ -1178,30 +1178,24 @@ class ClipperService:
             has_transcript = transcript_info.get('success') and transcript_info.get('transcript')
             
             if not has_transcript:
-                logger.info(f"No transcript available for {url}, using metadata-only analysis")
+                logger.info(f"No transcript available for {url}, returning basic response without AI analysis")
                 
-                # 자막이 없는 경우 메타데이터만으로 요약 생성
-                summary_result = await self.generate_youtube_summary_from_metadata_only(
-                    session=session,
-                    url=url,
-                    metadata=metadata,
-                    user_id=user_id,
-                    tag_count=tag_count
-                )
+                # 자막이 없는 경우 AI를 사용하지 않고 기본 응답 생성
+                basic_summary = self._generate_basic_youtube_response(metadata, transcript_info)
                 
-                # 자막 없음을 명시한 결과 반환
+                # 자막 없음을 명시한 기본 결과 반환
                 result = {
                     'success': True,
                     'video_info': metadata,
                     'transcript_info': transcript_info,
-                    'summary': summary_result.get('summary', ''),
-                    'tags': summary_result.get('recommended_tags', []),
-                    'category': summary_result.get('recommended_category', ''),
-                    'analysis_method': 'metadata_only',
-                    'warning': '자막이 제공되지 않아 제목, 설명 등 메타데이터만으로 분석되었습니다.'
+                    'summary': basic_summary['summary'],
+                    'tags': basic_summary['tags'],
+                    'category': basic_summary['category'],
+                    'analysis_method': 'basic_metadata',
+                    'warning': '자막을 추출할 수 없어 AI 분석 없이 기본 정보만 제공됩니다.'
                 }
                 
-                logger.info(f"Metadata-only analysis completed for: {metadata.get('title', 'Unknown')[:50]}...")
+                logger.info(f"Basic response generated for: {metadata.get('title', 'Unknown')[:50]}...")
                 return result
             
             # 3. 자막이 있는 경우 일반 요약 및 추천 생성
@@ -1408,6 +1402,104 @@ class ClipperService:
             parts.append(f"조회수: {metadata['view_count']:,}만번")
         
         return "\n\n".join(parts)
+    
+    def _generate_basic_youtube_response(self, metadata: Dict[str, Any], transcript_info: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        AI를 사용하지 않고 메타데이터만으로 기본적인 YouTube 응답 생성
+        
+        Args:
+            metadata: YouTube 비디오 메타데이터
+            transcript_info: 자막 정보 (실패 시)
+            
+        Returns:
+            기본 응답 딕셔너리 (summary, tags, category)
+        """
+        title = metadata.get('title', '제목 없음')
+        description = metadata.get('description', '')
+        channel = metadata.get('channel', metadata.get('uploader', '채널 없음'))
+        duration = metadata.get('duration_formatted', '시간 없음')
+        
+        # 기본 요약 생성 (AI 없이)
+        summary_parts = [f"YouTube 영상: {title}"]
+        
+        if channel != '채널 없음':
+            summary_parts.append(f"채널: {channel}")
+        
+        if duration != '시간 없음':
+            summary_parts.append(f"재생시간: {duration}")
+            
+        if description:
+            # 설명의 첫 100자만 사용
+            short_desc = description[:100].strip()
+            if len(description) > 100:
+                short_desc += "..."
+            if short_desc:
+                summary_parts.append(f"설명: {short_desc}")
+        
+        # 자막 추출 실패 이유 추가
+        extraction_method = transcript_info.get('extraction_method', 'unknown')
+        if extraction_method == 'no_transcript_available':
+            summary_parts.append("자막이 제공되지 않는 영상입니다.")
+        elif 'error' in transcript_info:
+            summary_parts.append("자막을 추출할 수 없었습니다.")
+        else:
+            summary_parts.append("자막 분석에 실패했습니다.")
+            
+        summary = " | ".join(summary_parts)
+        
+        # 기본 태그 생성 (AI 없이, 메타데이터 기반)
+        tags = []
+        
+        # YouTube 메타데이터에서 태그 추출
+        if metadata.get('tags'):
+            youtube_tags = metadata['tags'][:5]  # 최대 5개
+            tags.extend([tag for tag in youtube_tags if isinstance(tag, str) and len(tag) > 1])
+        
+        # 카테고리에서 태그 추출
+        if metadata.get('categories'):
+            for category in metadata['categories'][:2]:  # 최대 2개
+                if isinstance(category, str) and len(category) > 1:
+                    tags.append(category)
+        
+        # 항상 'YouTube' 태그 추가 (기본 식별자)
+        if 'YouTube' not in tags and 'youtube' not in [tag.lower() for tag in tags]:
+            tags.append('YouTube')
+        
+        # 기본 태그가 부족하면 일반적인 태그 추가
+        if len(tags) < 3:
+            basic_tags = ['동영상', '미디어']
+            tags.extend([tag for tag in basic_tags if tag not in tags])
+        
+        # 중복 제거 및 최대 5개 제한
+        tags = list(dict.fromkeys(tags))[:5]  # 중복 제거 후 5개 제한
+        
+        # 기본 카테고리 결정 (AI 없이)
+        category = '일반'
+        
+        # YouTube 카테고리가 있으면 사용
+        if metadata.get('categories') and len(metadata['categories']) > 0:
+            youtube_category = metadata['categories'][0]
+            if isinstance(youtube_category, str):
+                category = youtube_category
+        
+        # 제목이나 태그를 기반으로 간단한 카테고리 분류
+        title_lower = title.lower()
+        if any(word in title_lower for word in ['tutorial', '튜토리얼', '강의', '배우기', 'how to']):
+            category = '교육'
+        elif any(word in title_lower for word in ['music', '음악', 'song', '노래']):
+            category = '음악'
+        elif any(word in title_lower for word in ['game', '게임', 'gaming']):
+            category = '게임'
+        elif any(word in title_lower for word in ['tech', '기술', 'technology', '개발']):
+            category = '기술'
+        elif any(word in title_lower for word in ['news', '뉴스', '새소식']):
+            category = '뉴스'
+        
+        return {
+            'summary': summary,
+            'tags': tags,
+            'category': category
+        }
 
 # 서비스 인스턴스 생성 (싱글톤 패턴)
 clipper_service = ClipperService()

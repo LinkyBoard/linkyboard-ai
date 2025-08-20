@@ -350,13 +350,11 @@ async def test_generate_youtube_summary_from_url_no_transcript(clipper_service, 
     # Then
     assert result['success'] is True
     assert result['video_info']['title'] == '자막 없는 비디오'
-    assert result['summary'] == "메타데이터 기반 요약"
-    assert result['tags'] == ['메타데이터', '요약']
-    assert result['category'] == "일반"
-    assert result['analysis_method'] == 'metadata_only'
-    assert '메타데이터만으로 분석' in result['warning']
+    assert 'YouTube 영상: 자막 없는 비디오' in result['summary']
+    assert 'YouTube' in result['tags']  # 기본 태그가 포함되어야 함
+    assert result['category'] == "엔터테인먼트"  # 메타데이터에서 가져온 카테고리
+    assert result['analysis_method'] == 'basic_metadata'  # 변경된 분석 방법
+    assert 'AI 분석 없이' in result['warning']  # 변경된 경고 메시지
     
-    # 메타데이터 전용 분석 메서드 호출 확인
-    # generate_youtube_summary_from_metadata_only 메서드가 호출되었는지 확인하기 위해
-    # 실제로는 이 메서드를 별도로 모의해야 함
-    pass
+    # AI 라우터가 호출되지 않았는지 확인 (자막이 없으므로 AI 사용 안함)
+    mock_ai_router.generate_youtube_summary.assert_not_called()
