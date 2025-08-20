@@ -58,5 +58,3 @@ class SummarizeResponse(BaseModel):
     summary: str
     tags: list[str]
     category: str
-    usage: Optional[Dict] = Field(None, description="사용량 정보")
-    routing: Optional[Dict] = Field(None, description="모델 라우팅 정보")
