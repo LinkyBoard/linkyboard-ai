@@ -15,6 +15,8 @@ from .schemas_youtube import (
     YouTubeSyncResponse,
     YouTubeSummarizeRequest,
     YouTubeSummarizeResponse,
+    YouTubeUrlRequest,
+    YouTubeUrlResponse,
 )
 from .service import clipper_service, get_clipper_service
 
@@ -261,4 +263,45 @@ async def record_user_interaction(
     except Exception as e:
         logger.error(f"Failed to record user interaction: {str(e)}")
         raise HTTPException(status_code=500, detail="상호작용 기록 중 오류가 발생했습니다.")
+
+
+@router.post("/youtube/analyze-url", response_model=YouTubeUrlResponse)
+async def analyze_youtube_url(
+    request: YouTubeUrlRequest,
+    session: AsyncSession = Depends(get_db),
+    clipper_service = Depends(get_clipper_service)
+):
+    """
+    YouTube URL만으로 완전한 분석 및 요약 생성
+    
+    URL에서 자동으로 메타데이터와 자막을 추출하여 요약과 추천을 제공합니다.
+    """
+    try:
+        logger.info(f"Received YouTube URL analysis request: {request.url}")
+        
+        # URL 분석 및 요약 생성
+        result = await clipper_service.generate_youtube_summary_from_url(
+            session=session,
+            url=request.url,
+            user_id=request.user_id,
+            tag_count=request.tag_count
+        )
+        
+        # 응답 구성
+        return YouTubeUrlResponse(
+            success=result['success'],
+            video_info=result.get('video_info'),
+            transcript_info=result.get('transcript_info'),
+            summary=result.get('summary'),
+            tags=result.get('tags'),
+            category=result.get('category'),
+            error=result.get('error')
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to analyze YouTube URL: {str(e)}")
+        return YouTubeUrlResponse(
+            success=False,
+            error=f"YouTube URL 분석 중 오류가 발생했습니다: {str(e)}"
+        )
 

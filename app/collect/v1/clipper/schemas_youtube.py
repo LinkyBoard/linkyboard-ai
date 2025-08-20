@@ -42,3 +42,21 @@ class YouTubeSummarizeResponse(BaseModel):
     tags: List[str] = Field(..., description="추천 태그 목록")
     category: str = Field(..., description="추천 카테고리")
     usage: Optional[Dict] = Field(None, description="사용량 정보")
+
+
+class YouTubeUrlRequest(BaseModel):
+    """YouTube URL만으로 요약 생성 요청 스키마"""
+    url: str = Field(..., description="YouTube 동영상 URL")
+    user_id: int = Field(..., description="사용자 ID")
+    tag_count: int = Field(default=5, description="추천 태그 수")
+
+
+class YouTubeUrlResponse(BaseModel):
+    """YouTube URL 요약 생성 응답 스키마"""
+    success: bool = Field(..., description="성공 여부")
+    video_info: Optional[Dict] = Field(None, description="비디오 메타데이터")
+    transcript_info: Optional[Dict] = Field(None, description="자막 정보")
+    summary: Optional[str] = Field(None, description="동영상 요약")
+    tags: Optional[List[str]] = Field(None, description="추천 태그 목록")
+    category: Optional[str] = Field(None, description="추천 카테고리")
+    error: Optional[str] = Field(None, description="오류 메시지")
