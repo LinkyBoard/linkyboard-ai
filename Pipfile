@@ -31,6 +31,8 @@ konlpy = "*"
 textstat = "*"
 pytest-bdd = "*"
 tiktoken = "*"
+yt-dlp = "*"
+youtube-transcript-api = "*"
 
 [dev-packages]
 pytest = "*"

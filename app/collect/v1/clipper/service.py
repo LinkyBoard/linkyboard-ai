@@ -13,6 +13,7 @@ from app.ai.embedding.service import embedding_service
 from app.ai.classification.tag_extractor import TagExtractionService
 from app.ai.classification.category_classifier import CategoryClassificationService
 from app.ai.classification.smart_extractor import smart_extraction_service
+from app.ai.content_extraction.youtube_url_extractor import youtube_url_extractor
 from app.ai.recommendation.vector_service import VectorProcessingService
 from app.ai.recommendation.user_profiling import UserProfilingService
 from app.core.models import Tag, ItemTags, Category
@@ -53,9 +54,10 @@ class ClipperService:
         self.tag_extractor = TagExtractionService()  # 기존 OpenAI 기반
         self.category_classifier = CategoryClassificationService()  # 기존 OpenAI 기반
         self.smart_extractor = smart_extraction_service  # 새로운 로컬 NLP 기반
+        self.youtube_url_extractor = youtube_url_extractor  # YouTube URL 추출기
         # vector_service와 user_profiling은 DB 연결이 필요하므로 메서드에서 초기화
         
-        logger.info("Clipper service initialized with recommendation services (including smart extractor)")
+        logger.info("Clipper service initialized with recommendation services (including smart extractor and YouTube URL extractor)")
 
     async def _process_embedding_with_monitoring(self, item_id: int, html_content: str, user_id: int = None):
         """
@@ -1130,6 +1132,103 @@ class ClipperService:
         except Exception as e:
             logger.error(f"Error extracting video ID from URL {url}: {e}")
             return None
+
+    async def generate_youtube_summary_from_url(
+        self,
+        session: AsyncSession,
+        url: str,
+        user_id: int,
+        tag_count: int = 5
+    ) -> Dict:
+        """
+        YouTube URL만으로 완전한 요약 및 추천 생성
+        
+        Args:
+            session: 데이터베이스 세션
+            url: YouTube URL
+            user_id: 사용자 ID
+            tag_count: 추천 태그 수
+            
+        Returns:
+            완전한 YouTube 분석 결과
+        """
+        try:
+            logger.info(f"Starting YouTube URL analysis for: {url}")
+            
+            # 1. YouTube URL에서 완전한 정보 추출
+            complete_info = await self.youtube_url_extractor.extract_complete_info(url)
+            
+            if not complete_info.get('extraction_success'):
+                error_msg = complete_info.get('error', 'Unknown extraction error')
+                logger.error(f"YouTube extraction failed: {error_msg}")
+                return {
+                    'success': False,
+                    'error': f"YouTube 정보를 추출할 수 없습니다: {error_msg}",
+                    'video_info': None,
+                    'transcript_info': None,
+                    'summary': None,
+                    'tags': None,
+                    'category': None
+                }
+            
+            metadata = complete_info['metadata']
+            transcript_info = complete_info['transcript']
+            
+            # 2. 추출된 정보 검증
+            if not transcript_info.get('success') or not transcript_info.get('transcript'):
+                logger.warning(f"No transcript available for {url}")
+                return {
+                    'success': False,
+                    'error': '자막을 사용할 수 없는 동영상입니다.',
+                    'video_info': metadata,
+                    'transcript_info': transcript_info,
+                    'summary': None,
+                    'tags': None,
+                    'category': None
+                }
+            
+            # 3. 요약 및 추천 생성
+            logger.info(f"Generating summary and recommendations for: {metadata.get('title', 'Unknown')[:50]}...")
+            
+            summary_result = await self.generate_youtube_summary_with_recommendations(
+                session=session,
+                url=url,
+                title=metadata.get('title', ''),
+                transcript=transcript_info.get('transcript', ''),
+                user_id=user_id,
+                tag_count=tag_count
+            )
+            
+            # 4. 완전한 결과 반환
+            result = {
+                'success': True,
+                'video_info': metadata,
+                'transcript_info': transcript_info,
+                'summary': summary_result.get('summary'),
+                'tags': summary_result.get('recommended_tags'),
+                'category': summary_result.get('recommended_category'),
+                'extraction_metadata': {
+                    'extraction_timestamp': complete_info.get('extraction_timestamp'),
+                    'transcript_language': transcript_info.get('language'),
+                    'is_auto_generated': transcript_info.get('is_auto_generated'),
+                    'available_languages': transcript_info.get('available_languages', [])
+                }
+            }
+            
+            logger.info(f"YouTube URL analysis completed successfully for: {metadata.get('title', 'Unknown')[:50]}...")
+            return result
+            
+        except Exception as e:
+            logger.error(f"YouTube URL analysis failed for {url}: {str(e)}")
+            return {
+                'success': False,
+                'error': f"YouTube 분석 중 오류가 발생했습니다: {str(e)}",
+                'video_info': None,
+                'transcript_info': None,
+                'summary': None,
+                'tags': None,
+                'category': None
+            }
 
 # 서비스 인스턴스 생성 (싱글톤 패턴)
 clipper_service = ClipperService()
