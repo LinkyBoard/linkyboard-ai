@@ -112,13 +112,13 @@ class VectorProcessingService:
                 if insert_data:
                     result = await self.db.execute(text("""
                         INSERT INTO keywords (keyword, embedding, frequency_global)
-                        SELECT * FROM unnest(:keywords::text[], :embeddings::vector[], :frequencies::int[])
+                        SELECT * FROM unnest($1::text[], $2::vector[], $3::int[])
                         RETURNING id, keyword
-                    """), {
-                        'keywords': [item[0] for item in insert_data],
-                        'embeddings': [item[1] for item in insert_data],
-                        'frequencies': [item[2] for item in insert_data]
-                    })
+                    """), 
+                        [item[0] for item in insert_data],
+                        [item[1] for item in insert_data], 
+                        [item[2] for item in insert_data]
+                    )
                     new_ids = result.fetchall()
                     
                     # 새로 생성된 ID를 결과에 반영
@@ -146,12 +146,12 @@ class VectorProcessingService:
                 SELECT 
                     keyword,
                     frequency_global,
-                    1 - (embedding <=> :embedding::vector) as similarity_score
+                    1 - (embedding <=> $1::vector) as similarity_score
                 FROM keywords
-                WHERE embedding <=> :embedding::vector < 0.5  -- 유사도 임계값
-                ORDER BY embedding <=> :embedding::vector
-                LIMIT :limit
-            """), {'embedding': target_embedding, 'limit': limit})
+                WHERE embedding <=> $1::vector < 0.5  -- 유사도 임계값
+                ORDER BY embedding <=> $1::vector
+                LIMIT $2
+            """), target_embedding, limit)
             similar_keywords = result.fetchall()
             
             return [dict(row) for row in similar_keywords]
@@ -171,12 +171,12 @@ class VectorProcessingService:
                 SELECT 
                     name,
                     description,
-                    1 - (embedding <=> :embedding::vector) as similarity_score
+                    1 - (embedding <=> $1::vector) as similarity_score
                 FROM categories
-                WHERE embedding <=> :embedding::vector < 0.3  -- 더 엄격한 임계값
-                ORDER BY embedding <=> :embedding::vector
-                LIMIT :limit
-            """), {'embedding': target_embedding, 'limit': limit})
+                WHERE embedding <=> $1::vector < 0.3  -- 더 엄격한 임계값
+                ORDER BY embedding <=> $1::vector
+                LIMIT $2
+            """), target_embedding, limit)
             similar_categories = result.fetchall()
             
             return [dict(row) for row in similar_categories]
