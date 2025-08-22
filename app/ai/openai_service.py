@@ -358,18 +358,37 @@ class OpenAIService:
         max_tokens: int = 500
     ) -> Dict[str, Any]:
         """웹페이지 요약 생성"""
+        from app.core.utils import extract_text_from_html, truncate_text_for_ai
+        
         try:
-            # text_content = self._extract_text_from_html(html_content)
-            # NOTE: 현재는 url을 사용해서 openai에서 요약을 생성
-            # 이후에 html_content를 사용해서 요약을 생성할 수 있도록 변경 예정
+            # HTML 내용을 텍스트로 추출
+            text_content = extract_text_from_html(html_content)
+            
+            # AI 토큰 제한에 맞게 텍스트 자르기
+            text_content = truncate_text_for_ai(text_content, max_tokens=2500)
+            
             logger.bind(ai=True).info("Generating summary for URL = %s", url)
 
-            prompt = f"""
-            다음 웹페이지 내용을 분석하여 요약을 생성해주세요.
-            바로 저장할 수 있도록 요약만 작성해주세요.
-            
-            URL: {url}
-            """
+            # HTML 내용이 있으면 실제 내용으로, 없으면 URL만으로 요약
+            if text_content.strip():
+                prompt = f"""
+                다음 웹페이지 내용을 분석하여 요약을 생성해주세요.
+                바로 저장할 수 있도록 요약만 작성해주세요.
+                
+                URL: {url}
+                
+                웹페이지 내용:
+                {text_content}
+                """
+            else:
+                prompt = f"""
+                다음 웹페이지 내용을 분석하여 요약을 생성해주세요.
+                바로 저장할 수 있도록 요약만 작성해주세요.
+                
+                URL: {url}
+                
+                참고: 웹페이지의 실제 내용을 추출할 수 없어 URL 기반으로만 요약합니다.
+                """
             
             response = await self.client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
