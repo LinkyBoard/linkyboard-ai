@@ -180,17 +180,20 @@ class YouTubeUrlExtractor:
         self, 
         video_id: str, 
         languages: List[str] = ['ko', 'ko-KR', 'en', 'ja', 'es', 'fr', 'de', 'zh', 'pt', 'ru'],
-        format_type: str = 'text'
+        format_type: str = 'text',
+        use_audio_stt: bool = True  # 새 오디오 STT 시스템 사용 여부
     ) -> Dict[str, Any]:
         """
         YouTube 비디오의 자막을 추출합니다.
-        어떤 언어의 자막이든 추출하여 AI를 통해 한글로 요약합니다.
-        자동 생성, 수동 작성, 번역 등 모든 가능한 자막을 시도합니다.
+        
+        1. 새로운 방식: yt-dlp + Whisper STT (다국어 지원, IP 차단 문제 없음)
+        2. 기존 방식: YouTube Transcript API (폴백 옵션)
         
         Args:
             video_id: YouTube 비디오 ID
             languages: 선호 언어 리스트 (기본값: 주요 10개 언어)
             format_type: 포맷 타입 ('text', 'srt')
+            use_audio_stt: 새 오디오 STT 시스템 사용 여부
             
         Returns:
             자막 정보 딕셔너리
@@ -198,9 +201,56 @@ class YouTubeUrlExtractor:
         try:
             logger.info(f"Extracting transcript for video ID: {video_id}")
             
-            # API 사용 가능성 확인
+            # 1단계: 새로운 오디오 STT 시스템 시도 (우선 순위)
+            if use_audio_stt:
+                try:
+                    logger.info(f"Trying new audio STT system for video: {video_id}")
+                    from app.audio.youtube_stt_service import get_youtube_stt_service
+                    
+                    # YouTube URL 재구성
+                    youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+                    
+                    # STT 서비스로 자막 추출
+                    stt_service = get_youtube_stt_service()
+                    
+                    if stt_service.is_available():
+                        stt_result = await stt_service.extract_transcript(youtube_url)
+                        
+                        # STT 결과를 기존 포맷으로 변환
+                        transcript_info = {
+                            'video_id': video_id,
+                            'transcript': stt_result.transcript,
+                            'language': stt_result.language,
+                            'is_auto_generated': True,  # STT는 항상 자동 생성
+                            'available_languages': [stt_result.language],
+                            'format_type': format_type,
+                            'success': True,
+                            'extraction_method': f'audio_stt_{stt_result.language}',
+                            'word_count': len(stt_result.transcript.split()),
+                            'char_count': len(stt_result.transcript),
+                            'stt_metadata': {
+                                'processing_time': stt_result.processing_stats['total_time_seconds'],
+                                'efficiency_score': stt_result.processing_stats['efficiency_score'],
+                                'video_duration': stt_result.processing_stats['video_duration_seconds'],
+                                'model_used': stt_result.metadata['stt_info']['model_used']
+                            }
+                        }
+                        
+                        logger.info(f"Audio STT successful: {len(stt_result.transcript)} chars, "
+                                   f"language: {stt_result.language}, "
+                                   f"processing time: {stt_result.processing_stats['total_time_seconds']:.1f}s")
+                        
+                        return transcript_info
+                    else:
+                        logger.warning("Audio STT service not available, falling back to Transcript API")
+                        
+                except Exception as stt_error:
+                    logger.warning(f"Audio STT failed for {video_id}: {stt_error}")
+                    logger.info("Falling back to YouTube Transcript API")
+            
+            # 2단계: 기존 YouTube Transcript API 시도 (폴백)
             if not TRANSCRIPT_API_AVAILABLE:
-                raise Exception("YouTube Transcript API is not available")
+                raise Exception("Neither Audio STT nor YouTube Transcript API is available")
             
             transcript_info = {
                 'video_id': video_id,
@@ -502,8 +552,8 @@ class YouTubeUrlExtractor:
             # 2. 메타데이터 추출
             metadata = await self.extract_video_metadata(url)
             
-            # 3. 자막 추출
-            transcript_info = await self.extract_transcript(video_id)
+            # 3. 자막 추출 (새로운 오디오 STT 시스템 우선 사용)
+            transcript_info = await self.extract_transcript(video_id, use_audio_stt=True)
             
             # 4. 결과 통합
             complete_info = {
