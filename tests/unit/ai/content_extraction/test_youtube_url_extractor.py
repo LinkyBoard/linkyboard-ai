@@ -159,23 +159,27 @@ class TestYouTubeUrlExtractor:
                 'Video unavailable' in result['error'])
     
     @pytest.mark.asyncio
-    @patch('app.ai.content_extraction.youtube_url_extractor.YouTubeTranscriptApi')
-    async def test_extract_transcript_success(self, mock_transcript_api_class, extractor):
+    @patch('app.ai.content_extraction.youtube_url_extractor.get_youtube_stt_service')
+    async def test_extract_transcript_success(self, mock_get_stt_service, extractor):
         """자막 추출 성공 테스트"""
-        # Mock API 인스턴스
-        mock_api = Mock()
-        mock_transcript_api_class.return_value = mock_api
+        # Mock STT 서비스
+        mock_stt_service = Mock()
+        mock_get_stt_service.return_value = mock_stt_service
+        mock_stt_service.is_available.return_value = True
         
-        # Mock transcript
-        mock_transcript = Mock()
-        mock_transcript.language = 'Korean'
-        mock_transcript.language_code = 'ko' 
-        mock_transcript.is_generated = False
-        
-        transcript_data = [
-            {'text': '안녕하세요 테스트입니다', 'start': 0.0, 'duration': 2.0}
-        ]
-        mock_transcript.fetch.return_value = transcript_data
+        # Mock STT 결과
+        mock_stt_result = Mock()
+        mock_stt_result.transcript = '안녕하세요 테스트입니다'
+        mock_stt_result.language = 'ko'
+        mock_stt_result.processing_stats = {
+            'total_time_seconds': 10.5,
+            'efficiency_score': 85.2,
+            'video_duration_seconds': 60.0
+        }
+        mock_stt_result.metadata = {
+            'stt_info': {'model_used': 'base'}
+        }
+        mock_stt_service.extract_transcript = AsyncMock(return_value=mock_stt_result)
         
         # Mock transcript list
         mock_transcripts = Mock()
@@ -189,17 +193,19 @@ class TestYouTubeUrlExtractor:
         assert result['success'] is True
         assert result['video_id'] == 'dQw4w9WgXcQ'
         assert result['language'] == 'ko'
-        assert result['is_auto_generated'] is False
+        assert result['is_auto_generated'] is True  # STT는 항상 자동 생성
         assert '안녕하세요 테스트입니다' in result['transcript']
+        assert 'stt_metadata' in result
+        assert result['extraction_method'] == 'audio_stt_ko'
     
     @pytest.mark.asyncio
-    @patch('app.ai.content_extraction.youtube_url_extractor.YouTubeTranscriptApi')
-    async def test_extract_transcript_failure(self, mock_transcript_api_class, extractor):
+    @patch('app.ai.content_extraction.youtube_url_extractor.get_youtube_stt_service')
+    async def test_extract_transcript_failure(self, mock_get_stt_service, extractor):
         """자막 추출 실패 테스트"""
-        # Mock API 인스턴스
-        mock_api = Mock()
-        mock_transcript_api_class.return_value = mock_api
-        mock_api.list.side_effect = Exception("No transcript found")
+        # Mock STT 서비스 실패
+        mock_stt_service = Mock()
+        mock_get_stt_service.return_value = mock_stt_service
+        mock_stt_service.is_available.return_value = False
         
         # 테스트 실행
         result = await extractor.extract_transcript('invalid_id')
@@ -207,7 +213,8 @@ class TestYouTubeUrlExtractor:
         # 검증
         assert result['success'] is False
         assert result['video_id'] == 'invalid_id'
-        assert 'error' in result
+        assert result['extraction_method'] == 'fallback_failed'
+        assert '자막 추출에 실패했습니다' in result['transcript']
     
     @pytest.mark.asyncio
     @patch.object(YouTubeUrlExtractor, 'extract_video_metadata')
@@ -315,74 +322,18 @@ class TestYouTubeUrlExtractor:
             assert all(isinstance(s, str) for s in suggestions)
     
     @pytest.mark.asyncio
-    @patch('app.ai.content_extraction.youtube_url_extractor.YouTubeTranscriptApi')
-    async def test_extract_transcript_with_auto_generated(self, mock_transcript_api_class, extractor):
-        """자동 생성 자막 추출 테스트"""
-        # Mock API 인스턴스 생성
-        mock_api = Mock()
-        mock_transcript_api_class.return_value = mock_api
-        
-        # Mock 수동 자막 (한국어 없음)
-        mock_manual_transcript = Mock()
-        mock_manual_transcript.language_code = 'en'
-        mock_manual_transcript.language = 'English'
-        mock_manual_transcript.is_generated = False
-        
-        # Mock 자동 자막 (한국어 있음)
-        mock_auto_transcript = Mock()
-        mock_auto_transcript.language_code = 'ko'
-        mock_auto_transcript.language = 'Korean'
-        mock_auto_transcript.is_generated = True
-        mock_auto_transcript.fetch.return_value = [
-            {'text': '자동 생성된 자막 내용입니다', 'start': 0.0, 'duration': 2.0}
-        ]
-        
-        # Mock transcript list
-        mock_transcripts = Mock()
-        mock_transcripts.__iter__ = Mock(return_value=iter([mock_manual_transcript, mock_auto_transcript]))
-        mock_api.list.return_value = mock_transcripts
+    @patch('app.ai.content_extraction.youtube_url_extractor.get_youtube_stt_service')
+    async def test_extract_transcript_stt_service_unavailable(self, mock_get_stt_service, extractor):
+        """STT 서비스 사용 불가능 테스트"""
+        # Mock STT 서비스가 사용 불가능
+        mock_stt_service = Mock()
+        mock_get_stt_service.return_value = mock_stt_service
+        mock_stt_service.is_available.return_value = False
         
         # 테스트 실행
-        result = await extractor.extract_transcript('test_video_id', ['ko'])
+        result = await extractor.extract_transcript('test_video_id')
         
         # 검증
-        assert result['success'] is True
-        assert result['language'] == 'ko'
-        assert result['is_auto_generated'] is True
-        assert result['extraction_method'] == 'auto_ko'
-        assert '자동 생성된 자막 내용입니다' in result['transcript']
-    
-    @pytest.mark.asyncio
-    @patch('app.ai.content_extraction.youtube_url_extractor.YouTubeTranscriptApi')
-    async def test_extract_transcript_with_translation(self, mock_transcript_api_class, extractor):
-        """번역 자막 추출 테스트"""
-        # Mock API 인스턴스 생성
-        mock_api = Mock()
-        mock_transcript_api_class.return_value = mock_api
-        
-        # Mock 영어 자막 (번역 가능)
-        mock_english_transcript = Mock()
-        mock_english_transcript.language_code = 'en'
-        mock_english_transcript.language = 'English'
-        mock_english_transcript.is_generated = False
-        mock_english_transcript.translate = Mock()
-        
-        mock_translated = Mock()
-        mock_translated.fetch.return_value = [
-            {'text': '번역된 자막 내용입니다', 'start': 0.0, 'duration': 2.0}
-        ]
-        mock_english_transcript.translate.return_value = mock_translated
-        
-        mock_transcripts = Mock()
-        mock_transcripts.__iter__ = Mock(return_value=iter([mock_english_transcript]))
-        mock_api.list.return_value = mock_transcripts
-        
-        # 테스트 실행 - 한국어 자막이 없어서 번역 시도
-        result = await extractor.extract_transcript('test_video_id', ['ko'])
-        
-        # 검증
-        assert result['success'] is True
-        assert result['language'] == 'ko'
-        assert result['is_auto_generated'] is True
-        assert result['extraction_method'] == 'translated_ko_from_en'
-        assert '번역된 자막 내용입니다' in result['transcript']
+        assert result['success'] is False
+        assert result['extraction_method'] == 'fallback_failed'
+        assert '자막 추출에 실패했습니다' in result['transcript']
