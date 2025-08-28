@@ -5,6 +5,7 @@ from app.board_ai.router import router as board_ai_router
 from app.board_sync.router import router as board_sync_router
 from app.user_sync.router import router as user_sync_router
 from app.admin.models.router import router as admin_models_router
+from app.agents.router import router as agents_router
 from app.core.middleware import LoggingMiddleware, ErrorHandlingMiddleware
 from app.core.logging import log, setup_logging
 from app.core.database import get_sync_db
@@ -63,6 +64,9 @@ app.include_router(user_sync_router)
 
 # Admin - Model Management
 app.include_router(admin_models_router)
+
+# Agent System V2 - 다중 에이전트 기반 AI 시스템
+app.include_router(agents_router)
 
 @app.get("/")
 def read_root():

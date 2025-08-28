@@ -159,7 +159,7 @@ class TestYouTubeUrlExtractor:
                 'Video unavailable' in result['error'])
     
     @pytest.mark.asyncio
-    @patch('app.ai.content_extraction.youtube_url_extractor.get_youtube_stt_service')
+    @patch('app.audio.youtube_stt_service.get_youtube_stt_service')
     async def test_extract_transcript_success(self, mock_get_stt_service, extractor):
         """자막 추출 성공 테스트"""
         # Mock STT 서비스
@@ -181,11 +181,6 @@ class TestYouTubeUrlExtractor:
         }
         mock_stt_service.extract_transcript = AsyncMock(return_value=mock_stt_result)
         
-        # Mock transcript list
-        mock_transcripts = Mock()
-        mock_transcripts.__iter__ = Mock(return_value=iter([mock_transcript]))
-        mock_api.list.return_value = mock_transcripts
-        
         # 테스트 실행
         result = await extractor.extract_transcript('dQw4w9WgXcQ')
         
@@ -199,7 +194,7 @@ class TestYouTubeUrlExtractor:
         assert result['extraction_method'] == 'audio_stt_ko'
     
     @pytest.mark.asyncio
-    @patch('app.ai.content_extraction.youtube_url_extractor.get_youtube_stt_service')
+    @patch('app.audio.youtube_stt_service.get_youtube_stt_service')
     async def test_extract_transcript_failure(self, mock_get_stt_service, extractor):
         """자막 추출 실패 테스트"""
         # Mock STT 서비스 실패
@@ -322,7 +317,7 @@ class TestYouTubeUrlExtractor:
             assert all(isinstance(s, str) for s in suggestions)
     
     @pytest.mark.asyncio
-    @patch('app.ai.content_extraction.youtube_url_extractor.get_youtube_stt_service')
+    @patch('app.audio.youtube_stt_service.get_youtube_stt_service')
     async def test_extract_transcript_stt_service_unavailable(self, mock_get_stt_service, extractor):
         """STT 서비스 사용 불가능 테스트"""
         # Mock STT 서비스가 사용 불가능
