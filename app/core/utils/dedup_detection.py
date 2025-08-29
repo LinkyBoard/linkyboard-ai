@@ -24,7 +24,7 @@ from sqlalchemy import select, text
 
 from app.core.logging import get_logger
 from app.core.models import Item
-from app.observability import trace_request, record_db_operation
+from app.core.utils.observability import trace_request, record_db_operation
 
 logger = get_logger(__name__)
 

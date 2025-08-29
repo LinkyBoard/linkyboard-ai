@@ -8,7 +8,7 @@ from sqlalchemy import select, and_
 
 from app.core.logging import get_logger
 from app.core.models import Item, ItemEmbeddingMetadata, ItemTags
-from app.observability import trace_request, record_db_operation
+from app.core.utils.observability import trace_request, record_db_operation
 from .schemas import ItemDeleteRequest
 
 logger = get_logger(__name__)

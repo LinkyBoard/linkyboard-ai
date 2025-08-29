@@ -15,7 +15,7 @@ from app.ai.embedding.generators.openai_generator import OpenAIEmbeddingGenerato
 from app.ai.embedding.repository import EmbeddingRepository
 from app.core.repository import ItemRepository
 from app.core.logging import get_logger
-from app.observability import trace_embedding_generation, record_ai_tokens
+from app.core.utils.observability import trace_embedding_generation, record_ai_tokens
 
 logger = get_logger(__name__)
 
