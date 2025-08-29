@@ -728,6 +728,109 @@ class BoardAnalytics(Base):
         return [{"tag": tag, "weight": weight} for tag, weight in items[:limit]]
 
 
+class UserTokenQuota(Base):
+    """사용자 토큰 할당량 및 사용량 추적 테이블"""
+    __tablename__ = "user_token_quota"
+    
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, comment="사용자 ID")
+    plan_month = Column(Date, primary_key=True, comment="계획 월 (YYYY-MM-01)")
+    
+    # 할당량 정보
+    allocated_quota = Column(Integer, nullable=False, default=10000, comment="할당된 토큰 쿼터")
+    used_tokens = Column(Integer, nullable=False, default=0, comment="사용된 토큰 수")
+    remaining_tokens = Column(Integer, nullable=False, default=10000, comment="남은 토큰 수")
+    
+    # 충전 기록
+    total_purchased = Column(Integer, nullable=False, default=0, comment="총 구매한 토큰 수")
+    
+    # 상태 관리
+    is_active = Column(Boolean, default=True, nullable=False, comment="활성 상태")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일시")
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True, comment="수정일시")
+    
+    # 관계 설정  
+    user = relationship("User")
+    # token_purchases 관계는 복잡한 복합키 때문에 제거하고 서비스 레벨에서 처리
+    
+    __table_args__ = (
+        Index('ix_user_token_quota_user_month', 'user_id', 'plan_month'),
+        Index('ix_user_token_quota_plan_month', 'plan_month'),
+    )
+    
+    def __repr__(self):
+        return f"<UserTokenQuota(user_id={self.user_id}, remaining={self.remaining_tokens})>"
+    
+    @property
+    def usage_percentage(self) -> float:
+        """사용률 계산 (0.0-1.0)"""
+        if self.allocated_quota == 0:
+            return 1.0
+        return self.used_tokens / self.allocated_quota
+    
+    @property
+    def is_quota_exceeded(self) -> bool:
+        """쿼터 초과 여부"""
+        return self.remaining_tokens <= 0
+    
+    def can_consume(self, token_amount: int) -> bool:
+        """토큰 사용 가능 여부 확인"""
+        return self.remaining_tokens >= token_amount
+    
+    def consume_tokens(self, token_amount: int) -> bool:
+        """토큰 소비"""
+        if not self.can_consume(token_amount):
+            return False
+        
+        self.used_tokens += token_amount
+        self.remaining_tokens = max(0, self.allocated_quota - self.used_tokens)
+        return True
+    
+    def add_quota(self, additional_tokens: int):
+        """쿼터 추가 (충전)"""
+        self.allocated_quota += additional_tokens
+        self.remaining_tokens = self.allocated_quota - self.used_tokens
+        self.total_purchased += additional_tokens
+
+
+class TokenPurchase(Base):
+    """토큰 구매/충전 기록 테이블"""
+    __tablename__ = "token_purchases"
+    
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment="구매 기록 ID")
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, comment="사용자 ID")
+    plan_month = Column(Date, nullable=False, comment="해당 월 (YYYY-MM-01)")
+    
+    # 구매 정보
+    token_amount = Column(Integer, nullable=False, comment="구매한 토큰 수")
+    purchase_type = Column(String(20), nullable=False, default="purchase", comment="구매 유형: purchase, bonus, refund")
+    
+    # 결제 정보 (추후 확장)
+    payment_method = Column(String(50), nullable=True, comment="결제 수단")
+    payment_amount = Column(Float, nullable=True, comment="결제 금액")
+    currency = Column(String(10), nullable=True, default="KRW", comment="통화")
+    
+    # 상태 관리
+    status = Column(String(20), nullable=False, default="completed", comment="상태: pending, completed, failed, refunded")
+    transaction_id = Column(String(100), nullable=True, comment="거래 ID")
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="구매일시")
+    processed_at = Column(DateTime(timezone=True), nullable=True, comment="처리일시")
+    
+    # 관계 설정
+    user = relationship("User")
+    # quota 관계는 복잡한 복합키 때문에 제거하고 서비스 레벨에서 처리
+    
+    __table_args__ = (
+        Index('ix_token_purchases_user_id', 'user_id'),
+        Index('ix_token_purchases_plan_month', 'plan_month'),
+        Index('ix_token_purchases_status', 'status'),
+        Index('ix_token_purchases_created_at', 'created_at'),
+    )
+    
+    def __repr__(self):
+        return f"<TokenPurchase(user_id={self.user_id}, amount={self.token_amount}, status={self.status})>"
+
+
 class BoardRecommendationCache(Base):
     """보드별 추천 결과 캐시 테이블"""
     __tablename__ = "board_recommendation_cache"

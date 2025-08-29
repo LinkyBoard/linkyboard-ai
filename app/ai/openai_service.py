@@ -3,7 +3,7 @@ from typing import List, Dict, Any
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.metrics import count_tokens, record_llm_usage
-from app.observability import trace_ai_operation, record_ai_tokens, record_wtu_usage
+from app.core.utils.observability import trace_ai_operation, record_ai_tokens, record_wtu_usage
 
 logger = get_logger(__name__)
 

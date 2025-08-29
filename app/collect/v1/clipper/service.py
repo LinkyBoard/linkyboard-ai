@@ -17,7 +17,7 @@ from app.ai.content_extraction.youtube_url_extractor import youtube_url_extracto
 from app.ai.recommendation.vector_service import VectorProcessingService
 from app.ai.recommendation.user_profiling import UserProfilingService
 from app.core.models import Tag, ItemTags, Category
-from app.observability import trace_request, trace_ai_operation, record_ai_tokens, record_wtu_usage
+from app.core.utils.observability import trace_request, trace_ai_operation, record_ai_tokens, record_wtu_usage
 from app.dedup_detection import check_for_duplicates, DuplicateCandidate
 from .schemas import (
     WebpageSyncRequest,

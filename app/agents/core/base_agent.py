@@ -17,7 +17,7 @@ from app.core.logging import get_logger
 from app.metrics import record_llm_usage, calculate_llm_wtu
 from app.metrics.model_catalog_service import model_catalog_service
 from app.ai.providers.router import ai_router
-from app.observability import trace_ai_operation, record_ai_tokens, record_wtu_usage
+from app.core.utils.observability import trace_ai_operation, record_ai_tokens, record_wtu_usage
 from ..schemas import AgentContext, UserModelPreferences
 
 logger = get_logger(__name__)

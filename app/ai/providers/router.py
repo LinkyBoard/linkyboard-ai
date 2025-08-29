@@ -16,7 +16,7 @@ from app.core.logging import get_logger
 from app.metrics.model_catalog_service import ModelCatalogService
 from app.core.models import ModelCatalog
 from app.metrics import record_llm_usage, calculate_wtu
-from app.observability import trace_ai_operation, record_ai_tokens, record_wtu_usage
+from app.core.utils.observability import trace_ai_operation, record_ai_tokens, record_wtu_usage
 
 logger = get_logger(__name__)
 
