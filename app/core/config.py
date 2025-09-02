@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # Google (Gemini) 설정  
     GOOGLE_API_KEY: Optional[str] = None
     
+    # LangSmith 설정
+    LANGCHAIN_TRACING_V2: bool = True
+    LANGCHAIN_API_KEY: Optional[str] = None
+    LANGCHAIN_PROJECT: str = "LinkyBoard-AI"
+    LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
+    
     # 애플리케이션 설정
     APP_NAME: str = "LinkyBoard AI"
     DEBUG: bool = False

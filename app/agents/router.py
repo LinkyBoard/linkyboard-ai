@@ -14,9 +14,12 @@ from .schemas import (
     ProcessingModeRequest,
     ProcessingModeResponse,
     ModeComparisonAnalytics,
-    DateRange
+    DateRange,
+    AgentContext,
+    UserModelPreferences
 )
 from .mode_selector import mode_selector_service
+from .langgraph.adapter import process_content_with_langgraph, get_agent_statistics, configure_agent_mode
 
 logger = get_logger(__name__)
 security = HTTPBearer()
@@ -297,6 +300,122 @@ async def get_mode_comparison_analytics(
     }
 
 
+@router.post("/langgraph/process-content")
+async def langgraph_process_content(
+    request: Dict[str, Any],
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    LangGraph 워크플로우로 콘텐츠 처리
+    
+    새로운 LangGraph 기반 에이전트 시스템을 사용하여 콘텐츠를 처리합니다.
+    """
+    try:
+        user_id = request.get('user_id')
+        input_data = request.get('input_data', {})
+        mode = request.get('mode', 'auto')  # legacy, langgraph, auto
+        
+        if not user_id:
+            raise HTTPException(status_code=400, detail="user_id가 필요합니다")
+        
+        # 사용자 선호도 및 컨텍스트 구성
+        user_preferences = UserModelPreferences(
+            default_llm_model=request.get('default_llm_model'),
+            preferred_providers=request.get('preferred_providers', []),
+            avoid_models=request.get('avoid_models', []),
+            quality_preference=request.get('quality_preference', 'balance'),
+            cost_sensitivity=request.get('cost_sensitivity', 'medium')
+        )
+        
+        context = AgentContext(
+            user_id=user_id,
+            board_id=request.get('board_id'),
+            complexity=request.get('complexity', 3),
+            user_model_preferences=user_preferences
+        )
+        
+        logger.info(f"LangGraph content processing: user={user_id}, mode={mode}")
+        
+        # LangGraph 처리 실행
+        result = await process_content_with_langgraph(
+            user_id=user_id,
+            input_data=input_data,
+            context=context,
+            mode=mode,
+            session=db
+        )
+        
+        return {
+            "success": result.success,
+            "content": result.content,
+            "metadata": result.metadata,
+            "model_used": result.model_used,
+            "tokens_used": result.tokens_used,
+            "wtu_consumed": result.wtu_consumed,
+            "cost_usd": result.cost_usd,
+            "execution_time_ms": result.execution_time_ms,
+            "error_message": result.error_message
+        }
+        
+    except Exception as e:
+        logger.error(f"LangGraph content processing failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"LangGraph 콘텐츠 처리 실패: {str(e)}"
+        )
+
+
+@router.get("/langgraph/statistics")
+async def get_langgraph_statistics():
+    """
+    LangGraph 에이전트 시스템 통계 조회
+    
+    레거시 vs LangGraph 실행 통계를 반환합니다.
+    """
+    try:
+        stats = get_agent_statistics()
+        return stats
+    except Exception as e:
+        logger.error(f"Failed to get LangGraph statistics: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"통계 조회 실패: {str(e)}"
+        )
+
+
+@router.post("/langgraph/configure")
+async def configure_langgraph_mode(
+    request: Dict[str, str]
+):
+    """
+    LangGraph 에이전트 기본 모드 설정
+    
+    시스템의 기본 에이전트 실행 모드를 설정합니다.
+    """
+    try:
+        mode = request.get('mode')
+        if mode not in ['legacy', 'langgraph', 'auto']:
+            raise HTTPException(
+                status_code=400,
+                detail="mode는 'legacy', 'langgraph', 'auto' 중 하나여야 합니다"
+            )
+        
+        configure_agent_mode(mode)
+        
+        return {
+            "success": True,
+            "message": f"기본 에이전트 모드가 '{mode}'로 설정되었습니다.",
+            "mode": mode
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to configure LangGraph mode: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"모드 설정 실패: {str(e)}"
+        )
+
+
 @router.get("/monitoring/system-status")
 async def get_agent_system_status():
     """
@@ -304,34 +423,39 @@ async def get_agent_system_status():
     
     현재 시스템의 전반적인 상태를 확인합니다.
     """
-    return {
-        "status": "healthy",
-        "version": "v2.0.0-alpha",
-        "components": {
-            "mode_selector": "operational",
-            "agent_coordinator": "not_implemented",
-            "reference_validator": "not_implemented", 
-            "performance_monitor": "not_implemented"
-        },
-        "implementation_progress": {
-            "phase_1": "in_progress",
-            "phase_2": "planned",
-            "phase_3": "planned",
-            "phase_4": "planned"
-        },
-        "current_capabilities": [
-            "processing_mode_selection",
-            "mode_recommendation", 
-            "user_preference_analysis",
-            "smart_routing",
-            "content_analysis_agent",
-            "agent_coordination"
-        ],
-        "planned_capabilities": [
-            "reference_based_validation",
-            "real_time_monitoring",
-            "performance_comparison",
-            "summary_generation_agent",
-            "validator_agent"
-        ]
-    }
+    try:
+        langsmith_stats = get_agent_statistics()
+        
+        return {
+            "status": "healthy",
+            "version": "v2.1.0-langgraph",
+            "components": {
+                "mode_selector": "operational",
+                "langgraph_adapter": "operational",
+                "langsmith_monitoring": "operational",
+                "content_processing_graph": "operational",
+                "legacy_compatibility": "operational"
+            },
+            "implementation_progress": {
+                "langsmith_integration": "completed",
+                "langgraph_workflows": "completed", 
+                "adaptive_routing": "completed",
+                "monitoring_dashboard": "in_progress"
+            },
+            "current_capabilities": [
+                "langgraph_content_processing",
+                "langsmith_ai_monitoring",
+                "adaptive_mode_selection",
+                "legacy_compatibility",
+                "performance_tracking"
+            ],
+            "statistics": langsmith_stats,
+            "langsmith_enabled": True
+        }
+    except Exception as e:
+        logger.error(f"Failed to get system status: {str(e)}")
+        return {
+            "status": "degraded",
+            "error": str(e),
+            "version": "v2.1.0-langgraph"
+        }

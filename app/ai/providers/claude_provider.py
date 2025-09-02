@@ -2,6 +2,7 @@
 Claude Provider 구현
 
 Anthropic Claude API를 사용하여 AI Provider Interface를 구현합니다.
+LangSmith 추적 통합 지원.
 """
 
 from typing import List, Dict, Any, Optional
@@ -9,6 +10,7 @@ import tiktoken
 
 from .interface import AIProviderInterface, AIResponse
 from app.core.logging import get_logger
+from app.monitoring.langsmith.tracer import trace_ai_provider_method
 
 logger = get_logger(__name__)
 

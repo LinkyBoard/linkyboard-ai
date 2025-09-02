@@ -2,6 +2,7 @@
 OpenAI Provider 구현
 
 OpenAI API를 사용하여 AI Provider Interface를 구현합니다.
+LangSmith 추적 통합 지원.
 """
 
 import openai
@@ -11,6 +12,7 @@ from .interface import AIProviderInterface, AIResponse
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.metrics import count_tokens
+from app.monitoring.langsmith.tracer import trace_ai_provider_method
 
 logger = get_logger(__name__)
 
@@ -26,6 +28,7 @@ class OpenAIProvider(AIProviderInterface):
     def _get_provider_name(self) -> str:
         return "openai"
     
+    @trace_ai_provider_method("chat_completion")
     async def generate_chat_completion(
         self,
         messages: List[Dict[str, str]],
@@ -67,6 +70,7 @@ class OpenAIProvider(AIProviderInterface):
             logger.bind(ai=True).error(f"Failed to generate chat completion: {str(e)}")
             raise Exception(f"OpenAI API 호출 중 오류: {str(e)}")
     
+    @trace_ai_provider_method("tag_generation")
     async def generate_webpage_tags(
         self,
         summary: str,

@@ -11,6 +11,7 @@ from app.core.middleware import LoggingMiddleware, ErrorHandlingMiddleware, Toke
 from app.core.logging import log, setup_logging
 from app.core.database import get_sync_db
 from app.core.model_catalog_init import ensure_model_catalog_initialized
+from app.monitoring.langsmith.client import initialize_langsmith
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
@@ -21,6 +22,16 @@ async def lifespan(app: FastAPI):
     
     # 앱 시작 시 실행
     log.info("LinkyBoard AI 서비스 시작 중...")
+    
+    # LangSmith 초기화
+    try:
+        langsmith_initialized = initialize_langsmith()
+        if langsmith_initialized:
+            log.info("LangSmith 모니터링이 활성화되었습니다.")
+        else:
+            log.info("LangSmith 모니터링이 비활성화되었습니다.")
+    except Exception as e:
+        log.warning(f"LangSmith 초기화 실패: {e}")
     
     # 모델 카탈로그 초기화 확인
     try:
