@@ -1,37 +1,21 @@
-# FastAPI Project Template
+# LinkyBoard AI
 
-FastAPI 기반의 도메인 주도 설계(DDD) 백엔드 템플릿입니다.
+LinkyBoard를 위한 AI 기반 백엔드 서비스입니다. FastAPI와 도메인 주도 설계(DDD)를 기반으로 구축되었습니다.
 
-## 🚀 템플릿 사용법
+## 🚀 프로젝트 개요
 
-### 1. 템플릿 복사
+이 프로젝트는 LinkyBoard 플랫폼에 AI 기능을 제공하는 백엔드 서비스입니다.
 
-```bash
-# 새 프로젝트 디렉토리로 복사
-cp -r fastapi-ddd-template my-new-project
-cd my-new-project
-
-# Git 초기화
-rm -rf .git
-git init
-```
-
-### 2. 프로젝트명 변경
-
-다음 파일들에서 프로젝트명을 변경하세요:
-
-| 파일 | 변경 항목 |
-|------|----------|
-| `pyproject.toml` | `name`, `description`, `authors` |
-| `.env.example` | `APP_NAME`, `DATABASE_URL` (DB명) |
-| `docker-compose.yml` | `container_name`, `POSTGRES_DB` |
-| `app/core/config.py` | `app_name`, `database_url` 기본값 |
-
-### 3. 의존성 설치 및 실행
+### 환경 설정
 
 ```bash
+# 의존성 설치
 make install
+
+# 환경 변수 설정
 cp .env.example .env
+
+# Docker 환경 실행
 make docker-up
 ```
 
@@ -185,4 +169,6 @@ app/domains/
 
 ## 📝 License
 
-MIT
+MIT License
+
+Copyright (c) 2024 Wonjun Choi

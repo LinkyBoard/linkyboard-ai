@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     )
 
     # Application
-    app_name: str = "FastAPI App"
+    app_name: str = "LinkyBoard AI"
     app_env: str = "development"
     debug: bool = True
 
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = (
-        "postgresql+asyncpg://postgres:postgres@localhost:5432/app_db"
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/linkyboard_ai"
     )
     database_echo: bool = False
     auto_migrate: bool = True  # 서버 시작 시 자동 마이그레이션 여부

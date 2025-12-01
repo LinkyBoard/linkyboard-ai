@@ -4,19 +4,19 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: fastapi-app
+    container_name: linkyboard-ai-app
     ports:
       - "8000:8000"
     volumes:
       - .:/app
       - /app/.venv  # venv는 컨테이너 내부에서만 유지
     environment:
-      - APP_NAME=FastAPI App
+      - APP_NAME=LinkyBoard AI
       - APP_ENV=development
       - DEBUG=true
       - HOST=0.0.0.0
       - PORT=8000
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/app_db
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/linkyboard_ai
       - DATABASE_ECHO=false
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=dev-secret-key-change-in-production
@@ -32,17 +32,17 @@ services:
   # PostgreSQL 데이터베이스
   db:
     image: postgres:16-alpine
-    container_name: fastapi-db
+    container_name: linkyboard-ai-db
     ports:
       - "5432:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=app_db
+      - POSTGRES_DB=linkyboard_ai
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d app_db"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d linkyboard_ai"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -53,7 +53,7 @@ services:
   # Redis 캐시
   redis:
     image: redis:7-alpine
-    container_name: fastapi-redis
+    container_name: linkyboard-ai-redis
     ports:
       - "6379:6379"
     volumes:

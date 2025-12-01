@@ -20,13 +20,19 @@ MYPY := poetry run mypy
 
 ##@ 도움말
 help: ## 사용 가능한 명령어 목록 표시
-	@echo "$(GREEN)FastAPI DDD Template - 사용 가능한 명령어$(NC)"
+	@echo "$(GREEN)LinkyBoard AI - 사용 가능한 명령어$(NC)"
 	@echo ""
 	@awk 'BEGIN {FS = ":.*##"; printf "사용법: make $(YELLOW)<target>$(NC)\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(GREEN)%s$(NC)\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 
 ##@ 개발 환경
 install: ## Poetry 의존성 설치
 	poetry install
+
+setup: install ## 의존성 설치 + pre-commit 훅 설정
+	poetry run pre-commit install
+	poetry run pre-commit install --hook-type commit-msg
+	poetry run pre-commit install --hook-type pre-push
+	@echo "$(GREEN)✓ 개발 환경 설정 완료$(NC)"
 
 update: ## Poetry 의존성 업데이트
 	poetry update
