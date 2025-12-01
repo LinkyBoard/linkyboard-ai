@@ -1,0 +1,32 @@
+name: "🛠 Improvement / Refactor"
+description: "코드 품질 개선, 최적화, 리팩토링 이슈"
+title: "[IMPROVE] "
+labels: ["improvement", "ai"]
+body:
+  - type: textarea
+    id: target
+    attributes:
+      label: 개선할 대상
+      description: 어떤 코드/모듈/기능을 개선하려고 하나요?
+      placeholder: ex) MenuService 클래스의 메소드 구조
+    validations:
+      required: true
+  - type: textarea
+    id: plan
+    attributes:
+      label: 개선 내용
+      description: 어떤 방식으로 개선/리팩토링할 예정인가요?
+      placeholder: ex) 중복 코드를 제거하고 공통 유틸로 분리
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: 리스크/영향 범위
+      description: 호환성, 성능 영향, 마이그레이션 필요 여부 등
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 완료 기준
+      description: 개선 완료 판단 기준을 명시해주세요.
+      placeholder: ex) 사이드 이펙트 없이 동일 테스트 케이스 100% 통과

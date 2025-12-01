@@ -1,0 +1,25 @@
+name: "📋 Task / Chore"
+description: "기타 업무나 문서/환경 관련 작업"
+title: "[TASK] "
+labels: ["task", "ai"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 작업 설명
+      description: 어떤 작업을 해야 하는지 간단히 작성해주세요.
+      placeholder: ex) README에 설치 가이드 추가
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 완료 조건
+      description: 이 작업이 완료되었다고 판단할 기준을 작성해주세요.
+      placeholder: ex) 문서 PR 머지 및 배포 페이지에 반영 확인
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 우선순위
+      options: ["P0-가장 높음", "P1-높음", "P2-보통", "P3-낮음"]
+      default: 3
