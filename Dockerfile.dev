@@ -1,0 +1,30 @@
+# 개발용 Dockerfile
+FROM python:3.13-slim
+
+# 환경 변수 설정
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app
+
+# Poetry 설치
+RUN pip install poetry==1.8.4
+
+WORKDIR /app
+
+# 의존성 파일 복사
+COPY pyproject.toml poetry.lock* ./
+
+# 의존성 설치 (개발 의존성 포함)
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-interaction --no-ansi
+
+# 애플리케이션 코드 복사
+COPY . .
+
+# 포트 노출
+EXPOSE 8000
+
+# 개발 서버 실행 (핫 리로드 활성화)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
