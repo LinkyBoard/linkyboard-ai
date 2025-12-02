@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
 
+    # Internal API Key (Spring Boot 통신용)
+    internal_api_key: str = "your-internal-api-key-here"
+
     # CORS
     cors_origins: List[str] = [
         "http://localhost:3000",
