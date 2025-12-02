@@ -76,20 +76,117 @@ class TestHealthCheckScenario:
 
 
 @pytest.mark.skip(reason="DB 연동 필요 - Docker Compose 환경에서 실행")
-class TestUserCRUDScenarios:
-    """사용자 CRUD E2E 시나리오 (DB 필요)"""
+class TestUserSyncScenarios:
+    """사용자 동기화 E2E 시나리오 (DB 필요)"""
 
     @pytest.mark.asyncio
-    async def test_user_crud_flow(self, client):
-        """사용자 CRUD 전체 플로우 테스트
+    async def test_user_sync_full_lifecycle(self, client, api_key_header):
+        """사용자 동기화 전체 생명주기 테스트
 
         시나리오:
-        1. 새 사용자 생성
-        2. 생성된 사용자 조회
-        3. 사용자 정보 수정
-        4. 사용자 삭제
+        1. Spring Boot에서 새 사용자 동기화 (생성)
+        2. 동기화된 사용자 조회
+        3. 동일 사용자 재동기화 (업데이트)
+        4. 사용자 삭제 (Soft Delete)
+        5. 삭제된 사용자 재동기화 (복구)
+        6. 복구된 사용자 조회 및 검증
         """
-        pass
+        # 1. 새 사용자 동기화
+        user_id = 10001
+        response = await client.post(
+            "/api/v1/users",
+            json={"id": user_id},
+            headers=api_key_header,
+        )
+        assert response.status_code == 201
+        created_user = response.json()["data"]
+        assert created_user["id"] == user_id
+        assert created_user["deleted_at"] is None
+
+        # 2. 동기화된 사용자 조회
+        response = await client.get(
+            f"/api/v1/users/{user_id}",
+            headers=api_key_header,
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["id"] == user_id
+
+        # 3. 동일 사용자 재동기화 (업데이트)
+        response = await client.post(
+            "/api/v1/users",
+            json={"id": user_id},
+            headers=api_key_header,
+        )
+        assert response.status_code == 201
+        # last_sync_at이 업데이트되어야 함
+
+        # 4. 사용자 삭제
+        response = await client.delete(
+            f"/api/v1/users/{user_id}",
+            headers=api_key_header,
+        )
+        assert response.status_code == 204
+
+        # 5. 삭제된 사용자 재동기화 (복구)
+        response = await client.post(
+            "/api/v1/users",
+            json={"id": user_id},
+            headers=api_key_header,
+        )
+        assert response.status_code == 201
+        restored_user = response.json()["data"]
+        assert restored_user["deleted_at"] is None
+
+        # 6. 복구된 사용자 조회
+        response = await client.get(
+            f"/api/v1/users/{user_id}",
+            headers=api_key_header,
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["deleted_at"] is None
+
+    @pytest.mark.asyncio
+    async def test_bulk_sync_scenario(self, client, api_key_header):
+        """벌크 동기화 시나리오 테스트
+
+        시나리오:
+        1. 100명의 사용자 벌크 동기화
+        2. 동기화 결과 검증
+        3. 사용자 목록 조회로 확인
+        """
+        # 1. 100명 사용자 생성
+        user_ids = list(range(20001, 20101))
+        users = [{"id": uid} for uid in user_ids]
+
+        response = await client.post(
+            "/api/v1/users/bulk",
+            json={"users": users},
+            headers=api_key_header,
+        )
+        assert response.status_code == 201
+        result = response.json()["data"]
+        assert result["total"] == 100
+        assert result["created"] == 100
+
+        # 2. 사용자 목록 조회
+        response = await client.get(
+            "/api/v1/users?page=1&size=100",
+            headers=api_key_header,
+        )
+        assert response.status_code == 200
+        users_list = response.json()["data"]
+        assert len(users_list) >= 100
+
+        # 3. 재동기화 (모두 업데이트)
+        response = await client.post(
+            "/api/v1/users/bulk",
+            json={"users": users},
+            headers=api_key_header,
+        )
+        assert response.status_code == 201
+        result = response.json()["data"]
+        assert result["updated"] == 100
+        assert result["created"] == 0
 
 
 @pytest.mark.skip(reason="DB 연동 필요 - Docker Compose 환경에서 실행")
@@ -107,6 +204,36 @@ class TestErrorScenarios:
     """에러 처리 E2E 시나리오 (DB 필요)"""
 
     @pytest.mark.asyncio
-    async def test_not_found_scenario(self, client):
-        """존재하지 않는 리소스 접근 시나리오"""
-        pass
+    async def test_authentication_error_scenario(self, client, api_key_header):
+        """인증 실패 후 재시도 시나리오
+
+        시나리오:
+        1. 잘못된 API Key로 요청 → 401
+        2. 올바른 API Key로 재시도 → 성공
+        """
+        # 1. 잘못된 API Key
+        invalid_headers = {"X-Internal-Api-Key": "invalid-key"}
+        response = await client.get("/api/v1/users", headers=invalid_headers)
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "INVALID_API_KEY"
+
+        # 2. 올바른 API Key로 재시도
+        response = await client.get("/api/v1/users", headers=api_key_header)
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_user_not_found_scenario(self, client, api_key_header):
+        """존재하지 않는 사용자 접근 시나리오"""
+        # 존재하지 않는 사용자 조회
+        response = await client.get(
+            "/api/v1/users/999999", headers=api_key_header
+        )
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "USER_NOT_FOUND"
+
+        # 존재하지 않는 사용자 삭제
+        response = await client.delete(
+            "/api/v1/users/999999", headers=api_key_header
+        )
+        assert response.status_code == 404
