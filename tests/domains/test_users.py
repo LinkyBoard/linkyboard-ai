@@ -1,6 +1,13 @@
-"""Users 도메인 테스트"""
+"""Users 도메인 테스트 - 예외 및 스키마"""
 
 import pytest
+from pydantic import ValidationError
+
+from app.domains.users.exceptions import (
+    UserAlreadyDeletedException,
+    UserNotFoundException,
+)
+from app.domains.users.schemas import BulkSyncResponse, UserBulkSync, UserSync
 
 
 class TestUserExceptions:
@@ -8,54 +15,65 @@ class TestUserExceptions:
 
     def test_user_not_found_exception(self):
         """UserNotFoundException 테스트"""
-        from app.domains.users.exceptions import UserNotFoundException
-
         exc = UserNotFoundException(user_id=1)
         assert exc.error_code == "USER_NOT_FOUND"
         assert exc.status_code == 404
         assert exc.detail_info == {"user_id": 1}
 
-    def test_username_already_exists_exception(self):
-        """UsernameAlreadyExistsException 테스트"""
-        from app.domains.users.exceptions import UsernameAlreadyExistsException
+    def test_user_not_found_exception_without_id(self):
+        """UserNotFoundException (ID 없이) 테스트"""
+        exc = UserNotFoundException()
+        assert exc.error_code == "USER_NOT_FOUND"
+        assert exc.status_code == 404
+        assert exc.detail_info == {}
 
-        exc = UsernameAlreadyExistsException(username="testuser")
-        assert exc.error_code == "USERNAME_ALREADY_EXISTS"
-        assert exc.status_code == 409
-        assert exc.detail_info == {"username": "testuser"}
+    def test_user_already_deleted_exception(self):
+        """UserAlreadyDeletedException 테스트"""
+        exc = UserAlreadyDeletedException(user_id=1)
+        assert exc.error_code == "USER_ALREADY_DELETED"
+        assert exc.status_code == 403
+        assert exc.detail_info == {"user_id": 1}
 
 
 class TestUserSchemas:
     """사용자 스키마 테스트"""
 
-    def test_user_create_schema(self):
-        """UserCreate 스키마 테스트"""
-        from app.domains.users.schemas import UserCreate
+    def test_user_sync_schema(self):
+        """UserSync 스키마 테스트"""
+        user_data = UserSync(id=1)
+        assert user_data.id == 1
 
-        user_data = UserCreate(
-            username="testuser",
-            full_name="Test User",
-            password="password123",
+    def test_user_sync_schema_validation(self):
+        """UserSync 스키마 유효성 검사 테스트"""
+        # ID는 양수여야 함
+        with pytest.raises(ValidationError):
+            UserSync(id=0)
+
+        with pytest.raises(ValidationError):
+            UserSync(id=-1)
+
+    def test_user_bulk_sync_schema(self):
+        """UserBulkSync 스키마 테스트"""
+        bulk_data = UserBulkSync(users=[UserSync(id=1), UserSync(id=2)])
+        assert len(bulk_data.users) == 2
+
+    def test_user_bulk_sync_validation_max_length(self):
+        """UserBulkSync 최대 1000건 제한 테스트"""
+        # 1001건은 실패해야 함
+        with pytest.raises(ValidationError):
+            UserBulkSync(users=[UserSync(id=i) for i in range(1, 1002)])
+
+    def test_user_bulk_sync_validation_min_length(self):
+        """UserBulkSync 최소 1건 필요 테스트"""
+        with pytest.raises(ValidationError):
+            UserBulkSync(users=[])
+
+    def test_bulk_sync_response_schema(self):
+        """BulkSyncResponse 스키마 테스트"""
+        response = BulkSyncResponse(
+            total=100, created=50, updated=30, restored=20
         )
-        assert user_data.username == "testuser"
-        assert user_data.full_name == "Test User"
-
-    def test_user_create_schema_validation(self):
-        """UserCreate 스키마 유효성 검사 테스트"""
-        from pydantic import ValidationError
-
-        from app.domains.users.schemas import UserCreate
-
-        # 짧은 비밀번호
-        with pytest.raises(ValidationError):
-            UserCreate(
-                username="testuser",
-                password="short",
-            )
-
-        # 짧은 사용자명
-        with pytest.raises(ValidationError):
-            UserCreate(
-                username="ab",
-                password="password123",
-            )
+        assert response.total == 100
+        assert response.created == 50
+        assert response.updated == 30
+        assert response.restored == 20
