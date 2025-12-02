@@ -4,6 +4,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+from app.core.config import settings
 from app.main import app
 
 
@@ -21,3 +22,9 @@ async def client():
 def anyio_backend():
     """anyio 백엔드 설정"""
     return "asyncio"
+
+
+@pytest.fixture
+def api_key_header():
+    """Internal API Key 헤더"""
+    return {"X-Internal-Api-Key": settings.internal_api_key}
