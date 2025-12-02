@@ -7,10 +7,14 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import get_logger
+from app.core.middlewares.context import get_request_id
 from app.domains.users.exceptions import UserNotFoundException
 from app.domains.users.models import User
 from app.domains.users.repository import UserRepository
 from app.domains.users.schemas import BulkSyncResponse, UserSync
+
+logger = get_logger(__name__)
 
 
 class UserService:
@@ -79,15 +83,36 @@ class UserService:
 
         if existing:
             # 업데이트 또는 복구
+            action = "restored" if existing.deleted_at else "updated"
             if existing.deleted_at:
                 existing.deleted_at = None  # 복구
 
             existing.last_sync_at = datetime.now()
-            return await self.repository.update(existing)
+            user = await self.repository.update(existing)
+
+            logger.info(
+                "User synced",
+                extra={
+                    "request_id": get_request_id(),
+                    "user_id": user.id,
+                    "action": action,
+                },
+            )
+            return user
         else:
             # 생성
             user = User(id=user_data.id, last_sync_at=datetime.now())
-            return await self.repository.create(user)
+            created_user = await self.repository.create(user)
+
+            logger.info(
+                "User synced",
+                extra={
+                    "request_id": get_request_id(),
+                    "user_id": created_user.id,
+                    "action": "created",
+                },
+            )
+            return created_user
 
     async def bulk_upsert_users(
         self, users: list[UserSync]
@@ -125,9 +150,22 @@ class UserService:
                 await self.repository.create(user)
                 created += 1
 
-        return BulkSyncResponse(
+        result = BulkSyncResponse(
             total=total, created=created, updated=updated, restored=restored
         )
+
+        logger.info(
+            "Bulk sync completed",
+            extra={
+                "request_id": get_request_id(),
+                "total": total,
+                "created": created,
+                "updated": updated,
+                "restored": restored,
+            },
+        )
+
+        return result
 
     async def delete_user(self, user_id: int) -> None:
         """사용자 Soft Delete
@@ -140,3 +178,12 @@ class UserService:
         """
         user = await self.get_user(user_id)
         await self.repository.soft_delete(user)
+
+        logger.info(
+            "User deleted",
+            extra={
+                "request_id": get_request_id(),
+                "user_id": user_id,
+                "action": "deleted",
+            },
+        )
