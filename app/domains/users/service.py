@@ -1,17 +1,16 @@
-"""Users 도메인 서비스"""
+"""Users 도메인 서비스
 
-import hashlib
-from typing import Optional
+Spring Boot 사용자 동기화를 위한 비즈니스 로직 계층입니다.
+"""
+
+from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domains.users.exceptions import (
-    UsernameAlreadyExistsException,
-    UserNotFoundException,
-)
+from app.domains.users.exceptions import UserNotFoundException
 from app.domains.users.models import User
 from app.domains.users.repository import UserRepository
-from app.domains.users.schemas import UserCreate, UserUpdate
+from app.domains.users.schemas import BulkSyncResponse, UserSync
 
 
 class UserService:
@@ -20,80 +19,124 @@ class UserService:
     def __init__(self, session: AsyncSession):
         self.repository = UserRepository(session)
 
-    @staticmethod
-    def _hash_password(password: str) -> str:
-        """비밀번호 해시 (실제 프로젝트에서는 bcrypt 등 사용 권장)"""
-        return hashlib.sha256(password.encode()).hexdigest()
-
     async def get_user(self, user_id: int) -> User:
-        """사용자 조회"""
+        """사용자 조회
+
+        Args:
+            user_id: 사용자 ID
+
+        Returns:
+            사용자 객체
+
+        Raises:
+            UserNotFoundException: 사용자를 찾을 수 없는 경우
+        """
         user = await self.repository.get_by_id(user_id)
         if not user:
             raise UserNotFoundException(user_id=user_id)
-        return user
-
-    async def get_user_by_username(self, username: str) -> User:
-        """사용자명으로 사용자 조회"""
-        user = await self.repository.get_by_username(username)
-        if not user:
-            raise UserNotFoundException()
         return user
 
     async def get_users(
         self,
         page: int = 1,
         size: int = 20,
-        is_active: Optional[bool] = None,
+        include_deleted: bool = False,
     ) -> tuple[list[User], int]:
-        """사용자 목록 조회"""
+        """사용자 목록 조회
+
+        Args:
+            page: 페이지 번호
+            size: 페이지 크기
+            include_deleted: 삭제된 사용자 포함 여부
+
+        Returns:
+            (사용자 목록, 전체 사용자 수) 튜플
+        """
         skip = (page - 1) * size
         users = await self.repository.get_list(
-            skip=skip, limit=size, is_active=is_active
+            skip=skip, limit=size, include_deleted=include_deleted
         )
-        total = await self.repository.count(is_active=is_active)
+        total = await self.repository.count(include_deleted=include_deleted)
         return list(users), total
 
-    async def create_user(self, user_data: UserCreate) -> User:
-        """사용자 생성"""
-        # 사용자명 중복 확인
-        if await self.repository.exists_by_username(user_data.username):
-            raise UsernameAlreadyExistsException(username=user_data.username)
+    async def upsert_user(self, user_data: UserSync) -> User:
+        """사용자 Upsert (생성 또는 업데이트)
 
-        # 사용자 생성
-        user = User(
-            username=user_data.username,
-            full_name=user_data.full_name,
-            hashed_password=self._hash_password(user_data.password),
+        Spring Boot에서 전달받은 사용자 ID로 동기화합니다.
+        - 존재하지 않으면 생성
+        - 이미 존재하면 last_sync_at 업데이트
+        - 삭제된 사용자는 복구 (deleted_at = NULL)
+
+        Args:
+            user_data: 사용자 동기화 데이터
+
+        Returns:
+            생성 또는 업데이트된 사용자 객체
+        """
+        existing = await self.repository.get_by_id(
+            user_data.id, include_deleted=True
         )
 
-        return await self.repository.create(user)
+        if existing:
+            # 업데이트 또는 복구
+            if existing.deleted_at:
+                existing.deleted_at = None  # 복구
 
-    async def update_user(self, user_id: int, user_data: UserUpdate) -> User:
-        """사용자 수정"""
-        user = await self.get_user(user_id)
+            existing.last_sync_at = datetime.now()
+            return await self.repository.update(existing)
+        else:
+            # 생성
+            user = User(id=user_data.id, last_sync_at=datetime.now())
+            return await self.repository.create(user)
 
-        # 사용자명 변경 시 중복 확인
-        if user_data.username and user_data.username != user.username:
-            if await self.repository.exists_by_username(
-                user_data.username, exclude_id=user_id
-            ):
-                raise UsernameAlreadyExistsException(
-                    username=user_data.username
-                )
-            user.username = user_data.username
+    async def bulk_upsert_users(
+        self, users: list[UserSync]
+    ) -> BulkSyncResponse:
+        """벌크 사용자 Upsert
 
-        if user_data.full_name is not None:
-            user.full_name = user_data.full_name
+        Args:
+            users: 동기화할 사용자 목록
 
-        if user_data.password:
-            user.hashed_password = self._hash_password(user_data.password)
+        Returns:
+            벌크 동기화 결과
+        """
+        total = len(users)
+        created = 0
+        updated = 0
+        restored = 0
 
-        if user_data.is_active is not None:
-            user.is_active = user_data.is_active
+        for user_data in users:
+            existing = await self.repository.get_by_id(
+                user_data.id, include_deleted=True
+            )
 
-        return await self.repository.update(user)
+            if existing:
+                was_deleted = existing.deleted_at is not None
+                if was_deleted:
+                    existing.deleted_at = None
+                    restored += 1
+                else:
+                    updated += 1
+
+                existing.last_sync_at = datetime.now()
+                await self.repository.update(existing)
+            else:
+                user = User(id=user_data.id, last_sync_at=datetime.now())
+                await self.repository.create(user)
+                created += 1
+
+        return BulkSyncResponse(
+            total=total, created=created, updated=updated, restored=restored
+        )
 
     async def delete_user(self, user_id: int) -> None:
-        """사용자 삭제"""
+        """사용자 Soft Delete
+
+        Args:
+            user_id: 삭제할 사용자 ID
+
+        Raises:
+            UserNotFoundException: 사용자를 찾을 수 없는 경우
+        """
         user = await self.get_user(user_id)
-        await self.repository.delete(user)
+        await self.repository.soft_delete(user)
