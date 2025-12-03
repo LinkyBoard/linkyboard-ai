@@ -7,6 +7,10 @@ from app.core.llm import (
     get_observe_decorator,
 )
 from app.domains.topics.agents.base import AgentContext, AgentResult, BaseAgent
+from app.domains.topics.prompts.summarizer import (
+    SYSTEM_PROMPT,
+    USER_PROMPT_TEMPLATE,
+)
 
 observe = get_observe_decorator()
 
@@ -26,11 +30,11 @@ class SummarizerAgent(BaseAgent):
         return [
             LLMMessage(
                 role="system",
-                content="You are an expert at summarizing content concisely.",
+                content=SYSTEM_PROMPT,
             ),
             LLMMessage(
                 role="user",
-                content=f"Summarize the following:\n\n{context.prompt}",
+                content=USER_PROMPT_TEMPLATE.format(content=context.prompt),
             ),
         ]
 

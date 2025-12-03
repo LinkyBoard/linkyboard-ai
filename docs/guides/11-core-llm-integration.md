@@ -206,7 +206,5 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 ## 관련 문서
 
 - [AI Orchestration 명세서](../requirements/orchestration-spec.md)
-- [AI 모델 카탈로그 2025](../memo/ai-model-catalog-2025.md)
-- [Core LLM 구현 계획](../memo/core-llm-implementation-plan.md)
 - [프로젝트 구조 가이드](01-project-structure.md)
 - [예외 처리 가이드](04-exception-handling.md)
