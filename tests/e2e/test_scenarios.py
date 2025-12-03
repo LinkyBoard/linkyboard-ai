@@ -74,7 +74,9 @@ class TestUserSyncScenarios:
     """사용자 동기화 E2E 시나리오 (DB 필요)"""
 
     @pytest.mark.asyncio
-    async def test_user_sync_full_lifecycle(self, client, api_key_header):
+    async def test_user_sync_full_lifecycle(
+        self, client, api_key_header, user_id_factory
+    ):
         """사용자 동기화 전체 생명주기 테스트
 
         시나리오:
@@ -86,7 +88,7 @@ class TestUserSyncScenarios:
         6. 복구된 사용자 조회 및 검증
         """
         # 1. 새 사용자 동기화
-        user_id = 10001
+        user_id = user_id_factory()
         response = await client.post(
             "/api/v1/users",
             json={"id": user_id},
@@ -140,7 +142,9 @@ class TestUserSyncScenarios:
         assert response.json()["data"]["deleted_at"] is None
 
     @pytest.mark.asyncio
-    async def test_bulk_sync_scenario(self, client, api_key_header):
+    async def test_bulk_sync_scenario(
+        self, client, api_key_header, user_id_factory
+    ):
         """벌크 동기화 시나리오 테스트
 
         시나리오:
@@ -149,7 +153,7 @@ class TestUserSyncScenarios:
         3. 사용자 목록 조회로 확인
         """
         # 1. 100명 사용자 생성
-        user_ids = list(range(20001, 20101))
+        user_ids = user_id_factory(n=100)
         users = [{"id": uid} for uid in user_ids]
 
         response = await client.post(

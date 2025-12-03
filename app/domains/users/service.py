@@ -3,12 +3,11 @@
 Spring Boot 사용자 동기화를 위한 비즈니스 로직 계층입니다.
 """
 
-from datetime import datetime
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.core.middlewares.context import get_request_id
+from app.core.utils.datetime import now_utc
 from app.domains.users.exceptions import UserNotFoundException
 from app.domains.users.models import User
 from app.domains.users.repository import UserRepository
@@ -87,7 +86,7 @@ class UserService:
             if existing.deleted_at:
                 existing.deleted_at = None  # 복구
 
-            existing.last_sync_at = datetime.now()
+            existing.last_sync_at = now_utc()
             user = await self.repository.update(existing)
 
             logger.info(
@@ -101,7 +100,7 @@ class UserService:
             return user
         else:
             # 생성
-            user = User(id=user_data.id, last_sync_at=datetime.now())
+            user = User(id=user_data.id, last_sync_at=now_utc())
             created_user = await self.repository.create(user)
 
             logger.info(
@@ -131,41 +130,42 @@ class UserService:
         restored = 0
 
         for user_data in users:
-            existing = await self.repository.get_by_id(
-                user_data.id, include_deleted=True
-            )
+            try:
+                existing = await self.repository.get_by_id(
+                    user_data.id, include_deleted=True
+                )
 
-            if existing:
-                was_deleted = existing.deleted_at is not None
-                if was_deleted:
-                    existing.deleted_at = None
-                    restored += 1
+                if existing:
+                    was_deleted = existing.deleted_at is not None
+                    if was_deleted:
+                        existing.deleted_at = None
+                        restored += 1
+                    else:
+                        updated += 1
+
+                    existing.last_sync_at = now_utc()
+                    await self.repository.update(existing)
                 else:
-                    updated += 1
+                    user = User(id=user_data.id, last_sync_at=now_utc())
+                    await self.repository.create(user)
+                    created += 1
 
-                existing.last_sync_at = datetime.now()
-                await self.repository.update(existing)
-            else:
-                user = User(id=user_data.id, last_sync_at=datetime.now())
-                await self.repository.create(user)
-                created += 1
+            except Exception:
+                logger.exception(
+                    "Failed to sync user",
+                    extra={
+                        "request_id": get_request_id(),
+                        "user_id": getattr(user_data, "id", None),
+                    },
+                )
+                raise
 
-        result = BulkSyncResponse(
-            total=total, created=created, updated=updated, restored=restored
+        return BulkSyncResponse(
+            total=total,
+            created=created,
+            updated=updated,
+            restored=restored,
         )
-
-        logger.info(
-            "Bulk sync completed",
-            extra={
-                "request_id": get_request_id(),
-                "sync_total": total,
-                "sync_created": created,
-                "sync_updated": updated,
-                "sync_restored": restored,
-            },
-        )
-
-        return result
 
     async def delete_user(self, user_id: int) -> None:
         """사용자 Soft Delete

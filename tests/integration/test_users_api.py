@@ -143,6 +143,34 @@ class TestBulkSyncAPI:
 
         assert response.status_code == 201
 
+    @pytest.mark.asyncio
+    async def test_bulk_sync_persists_users(self, client, api_key_header):
+        """벌크 동기화 후 실제로 DB에 반영되는지 확인"""
+        users = [{"id": 101}, {"id": 102}, {"id": 103}]
+
+        # When
+        response = await client.post(
+            "/api/v1/users/bulk", json={"users": users}, headers=api_key_header
+        )
+
+        # Then
+        assert response.status_code == 201
+        data = response.json()["data"]
+        assert data["created"] == 3
+        assert data["total"] == 3
+
+        # 실제 조회로 검증
+        list_response = await client.get(
+            "/api/v1/users?page=1&size=100",
+            headers=api_key_header,
+        )
+        assert list_response.status_code == 200
+
+        returned_ids = {u["id"] for u in list_response.json()["data"]}
+
+        for uid in [101, 102, 103]:
+            assert uid in returned_ids
+
 
 class TestUserDeleteAPI:
     """사용자 삭제 API 테스트"""

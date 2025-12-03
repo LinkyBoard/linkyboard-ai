@@ -1,10 +1,10 @@
 """User Service 단위 테스트"""
 
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.core.utils.datetime import now_utc
 from app.domains.users.exceptions import UserNotFoundException
 from app.domains.users.models import User
 from app.domains.users.schemas import UserSync
@@ -30,7 +30,7 @@ class TestUserServiceGet:
     async def test_get_user_success(self, user_service):
         """사용자 조회 성공 테스트"""
         # Given
-        mock_user = User(id=1, last_sync_at=datetime.now())
+        mock_user = User(id=1, last_sync_at=now_utc())
         user_service.repository.get_by_id = AsyncMock(return_value=mock_user)
 
         # When
@@ -55,8 +55,8 @@ class TestUserServiceGet:
         """사용자 목록 조회 테스트"""
         # Given
         mock_users = [
-            User(id=1, last_sync_at=datetime.now()),
-            User(id=2, last_sync_at=datetime.now()),
+            User(id=1, last_sync_at=now_utc()),
+            User(id=2, last_sync_at=now_utc()),
         ]
         user_service.repository.get_list = AsyncMock(return_value=mock_users)
         user_service.repository.count = AsyncMock(return_value=2)
@@ -80,7 +80,7 @@ class TestUserServiceUpsert:
         # Given
         user_data = UserSync(id=1)
         user_service.repository.get_by_id = AsyncMock(return_value=None)
-        created_user = User(id=1, last_sync_at=datetime.now())
+        created_user = User(id=1, last_sync_at=now_utc())
         user_service.repository.create = AsyncMock(return_value=created_user)
 
         # When
@@ -97,9 +97,7 @@ class TestUserServiceUpsert:
         """기존 사용자 업데이트 테스트"""
         # Given
         user_data = UserSync(id=1)
-        existing_user = User(
-            id=1, deleted_at=None, last_sync_at=datetime.now()
-        )
+        existing_user = User(id=1, deleted_at=None, last_sync_at=now_utc())
         user_service.repository.get_by_id = AsyncMock(
             return_value=existing_user
         )
@@ -119,9 +117,7 @@ class TestUserServiceUpsert:
         """삭제된 사용자 복구 테스트"""
         # Given
         user_data = UserSync(id=1)
-        deleted_user = User(
-            id=1, deleted_at=datetime.now(), last_sync_at=datetime.now()
-        )
+        deleted_user = User(id=1, deleted_at=now_utc(), last_sync_at=now_utc())
         user_service.repository.get_by_id = AsyncMock(
             return_value=deleted_user
         )
@@ -155,12 +151,12 @@ class TestUserServiceBulkUpsert:
             if user_id == 1:
                 return None  # 새 사용자
             elif user_id == 2:
-                return User(id=2, deleted_at=None, last_sync_at=datetime.now())
+                return User(id=2, deleted_at=None, last_sync_at=now_utc())
             else:  # user_id == 3
                 return User(
                     id=3,
-                    deleted_at=datetime.now(),
-                    last_sync_at=datetime.now(),
+                    deleted_at=now_utc(),
+                    last_sync_at=now_utc(),
                 )
 
         user_service.repository.get_by_id = AsyncMock(
@@ -179,6 +175,40 @@ class TestUserServiceBulkUpsert:
             assert result.updated == 1
             assert result.restored == 1
 
+    @pytest.mark.asyncio
+    async def test_bulk_upsert_logs_and_raises_on_error(
+        self, user_service, caplog
+    ):
+        """벌크 동기화 중 예외 발생 시 로그 + 예외 전파 테스트"""
+        # Given
+        users = [
+            UserSync(id=1),
+            UserSync(id=2),
+        ]
+
+        user_service.repository.get_by_id = AsyncMock(return_value=None)
+
+        async def create_side_effect(user: User):
+            # 첫 번째 유저는 정상, 두 번째 유저에서 에러 발생
+            if user.id == 2:
+                raise RuntimeError("DB error")
+            return user
+
+        user_service.repository.create = AsyncMock(
+            side_effect=create_side_effect
+        )
+        user_service.repository.update = AsyncMock()
+
+        # When + Then
+        with patch("app.domains.users.service.logger") as mock_logger:
+            with pytest.raises(RuntimeError):
+                await user_service.bulk_upsert_users(users)
+
+            mock_logger.exception.assert_called_once()
+            _, kwargs = mock_logger.exception.call_args
+
+            assert kwargs["extra"]["user_id"] == 2
+
 
 class TestUserServiceDelete:
     """UserService 삭제 메서드 테스트"""
@@ -187,7 +217,7 @@ class TestUserServiceDelete:
     async def test_delete_user_success(self, user_service):
         """사용자 삭제 성공 테스트"""
         # Given
-        mock_user = User(id=1, last_sync_at=datetime.now())
+        mock_user = User(id=1, last_sync_at=now_utc())
         user_service.repository.get_by_id = AsyncMock(return_value=mock_user)
         user_service.repository.soft_delete = AsyncMock()
 

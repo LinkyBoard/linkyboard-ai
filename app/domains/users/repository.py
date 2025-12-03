@@ -3,12 +3,12 @@
 Spring Boot 사용자 동기화를 위한 데이터 접근 계층입니다.
 """
 
-from datetime import datetime
 from typing import Optional, Sequence, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.utils.datetime import now_utc
 from app.domains.users.models import User
 
 
@@ -120,7 +120,7 @@ class UserRepository:
         Returns:
             삭제된 사용자 객체
         """
-        user.deleted_at = datetime.now()
+        user.deleted_at = now_utc()
         await self.session.flush()
         await self.session.refresh(user)
         return user

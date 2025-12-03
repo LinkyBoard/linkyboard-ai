@@ -1,5 +1,6 @@
 """테스트 설정"""
 
+import itertools
 from typing import Generator
 
 import pytest
@@ -11,7 +12,25 @@ from testcontainers.postgres import PostgresContainer
 
 from app.core.config import settings
 from app.core.database import Base, get_db
+from app.core.utils.datetime import now_utc
 from app.main import app
+
+
+@pytest.fixture(scope="session")
+def user_id_factory():
+    """
+    테스트마다 겹치지 않는 PK를 만들기 위한 ID 팩토리.
+    UTC 기준 현재 타임스탬프(ms)를 시작값으로 사용
+    """
+    start = int(now_utc().timestamp())
+    counter = itertools.count(start=start)
+
+    def _factory(n: int = 1):
+        if n == 1:
+            return next(counter)
+        return [next(counter) for _ in range(n)]
+
+    return _factory
 
 
 @pytest.fixture(scope="session")
