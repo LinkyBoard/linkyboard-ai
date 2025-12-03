@@ -21,8 +21,12 @@ def test_langfuse_connection():
 
     # 설정 확인
     print("\n[1] 환경 변수 설정:")
-    print(f"  LANGFUSE_SECRET_KEY: {settings.langfuse_secret_key[:10]}...")
-    print(f"  LANGFUSE_PUBLIC_KEY: {settings.langfuse_public_key[:10]}...")
+    print(
+        f"  LANGFUSE_SECRET_KEY: ({len(settings.langfuse_secret_key)} chars)"
+    )
+    print(
+        f"  LANGFUSE_PUBLIC_KEY: ({len(settings.langfuse_public_key)} chars)"
+    )
     print(f"  LANGFUSE_HOST: {settings.langfuse_host}")
 
     # 클라이언트 확인
