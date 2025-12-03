@@ -70,12 +70,6 @@ class TestHealthCheckScenario:
         assert response.json()["data"]["status"] == "healthy"
 
 
-# =============================================================================
-# DB 연동 테스트 (Docker Compose 환경에서 실행)
-# =============================================================================
-
-
-@pytest.mark.skip(reason="DB 연동 필요 - Docker Compose 환경에서 실행")
 class TestUserSyncScenarios:
     """사용자 동기화 E2E 시나리오 (DB 필요)"""
 
@@ -189,17 +183,6 @@ class TestUserSyncScenarios:
         assert result["created"] == 0
 
 
-@pytest.mark.skip(reason="DB 연동 필요 - Docker Compose 환경에서 실행")
-class TestPaginationScenarios:
-    """페이지네이션 E2E 시나리오 (DB 필요)"""
-
-    @pytest.mark.asyncio
-    async def test_pagination_flow(self, client):
-        """페이지네이션 플로우 테스트"""
-        pass
-
-
-@pytest.mark.skip(reason="DB 연동 필요 - Docker Compose 환경에서 실행")
 class TestErrorScenarios:
     """에러 처리 E2E 시나리오 (DB 필요)"""
 

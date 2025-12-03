@@ -158,10 +158,10 @@ class UserService:
             "Bulk sync completed",
             extra={
                 "request_id": get_request_id(),
-                "total": total,
-                "created": created,
-                "updated": updated,
-                "restored": restored,
+                "sync_total": total,
+                "sync_created": created,
+                "sync_updated": updated,
+                "sync_restored": restored,
             },
         )
 

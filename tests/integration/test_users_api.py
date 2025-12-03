@@ -2,9 +2,6 @@
 
 import pytest
 
-# 데이터베이스 필요 표시
-requires_db = pytest.mark.skip(reason="Requires running PostgreSQL database")
-
 
 class TestAuthenticationRequired:
     """API Key 인증 필수 테스트"""
@@ -30,7 +27,6 @@ class TestAuthenticationRequired:
 class TestUsersListAPI:
     """사용자 목록 조회 API 테스트"""
 
-    @requires_db
     @pytest.mark.asyncio
     async def test_get_users_with_valid_api_key(self, client, api_key_header):
         """유효한 API Key로 사용자 목록 조회"""
@@ -40,10 +36,9 @@ class TestUsersListAPI:
         data = response.json()
         assert data["success"] is True
         assert "data" in data
-        assert "pagination" in data
+        assert "meta" in data
         assert isinstance(data["data"], list)
 
-    @requires_db
     @pytest.mark.asyncio
     async def test_get_users_pagination_params(self, client, api_key_header):
         """페이지네이션 파라미터 테스트"""
@@ -53,10 +48,9 @@ class TestUsersListAPI:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["pagination"]["page"] == 1
-        assert data["pagination"]["size"] == 10
+        assert data["meta"]["page"] == 1
+        assert data["meta"]["size"] == 10
 
-    @requires_db
     @pytest.mark.asyncio
     async def test_get_users_include_deleted_filter(
         self, client, api_key_header
@@ -74,7 +68,6 @@ class TestUsersListAPI:
 class TestUserDetailAPI:
     """사용자 상세 조회 API 테스트"""
 
-    @requires_db
     @pytest.mark.asyncio
     async def test_get_user_not_found(self, client, api_key_header):
         """존재하지 않는 사용자 조회"""
@@ -138,7 +131,6 @@ class TestBulkSyncAPI:
 
         assert response.status_code == 422
 
-    @requires_db
     @pytest.mark.asyncio
     async def test_bulk_sync_valid_request_format(
         self, client, api_key_header
@@ -149,14 +141,12 @@ class TestBulkSyncAPI:
             "/api/v1/users/bulk", json={"users": users}, headers=api_key_header
         )
 
-        # 데이터베이스 연결 필요
         assert response.status_code == 201
 
 
 class TestUserDeleteAPI:
     """사용자 삭제 API 테스트"""
 
-    @requires_db
     @pytest.mark.asyncio
     async def test_delete_user_not_found(self, client, api_key_header):
         """존재하지 않는 사용자 삭제"""
