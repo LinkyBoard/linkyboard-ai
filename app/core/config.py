@@ -58,6 +58,17 @@ class Settings(BaseSettings):
     langfuse_public_key: str = "pk-lf-your-public-key-here"
     langfuse_host: str = "https://cloud.langfuse.com"
 
+    # S3/MinIO Storage
+    s3_endpoint: str = "http://localhost:9000"  # MinIO(dev) / AWS S3(prod)
+    s3_access_key: str = "minioadmin"
+    s3_secret_key: str = "minioadmin"
+    s3_bucket_contents: str = "linkyboard-contents"
+    s3_region: str = "us-east-1"
+    s3_use_ssl: bool = False  # MinIO dev는 False, AWS prod는 True
+
+    # Content Settings
+    max_content_size: int = 50 * 1024 * 1024  # 50MB (PDF 최대 크기)
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
@@ -113,6 +124,19 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Production requires at least one LLM provider API key. "
                 "Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY."
+            )
+
+        # S3 크레덴셜 검증
+        if self.s3_access_key == "minioadmin":
+            raise ValueError(
+                "Production requires valid S3_ACCESS_KEY. "
+                "Set it via environment variable."
+            )
+
+        if self.s3_secret_key == "minioadmin":
+            raise ValueError(
+                "Production requires valid S3_SECRET_KEY. "
+                "Set it via environment variable."
             )
 
         return self
