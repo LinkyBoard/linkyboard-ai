@@ -165,7 +165,7 @@ class UserService:
                     "Failed to sync user (DB error)",
                     extra={
                         "request_id": get_request_id(),
-                        "user_id": getattr(user_data, "id", None),
+                        "user_id": user_data.id,
                         "exception_type": type(e).__name__,
                         "exception_message": str(e),
                     },
