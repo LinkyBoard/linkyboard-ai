@@ -3,6 +3,7 @@
 Spring Boot 사용자 동기화를 위한 비즈니스 로직 계층입니다.
 """
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -123,6 +124,15 @@ class UserService:
 
         Returns:
             벌크 동기화 결과
+
+        Transactional Behavior:
+            이 메서드는 하나의 데이터베이스 트랜잭션 내에서 실행됩니다.
+            모든 사용자 동기화 작업은 동일한 DB 세션(get_db)에서 처리되며,
+            작업 중 하나라도 SQLAlchemyError가 발생하면 전체 트랜잭션이 롤백됩니다.
+            즉, 이 메서드는 원자성(atomicity)을 보장합니다:
+                - 모든 사용자가 성공적으로 동기화되거나,
+                - 오류 발생 시 어떤 사용자도 반영되지 않습니다.
+            이는 FastAPI의 DB 세션 의존성(get_db)이 커밋/롤백을 관리하는 방식에 따라 자동으로 보장됩니다.
         """
         total = len(users)
         created = 0
@@ -150,14 +160,17 @@ class UserService:
                     await self.repository.create(user)
                     created += 1
 
-            except Exception:
+            except SQLAlchemyError as e:
                 logger.exception(
-                    "Failed to sync user",
+                    "Failed to sync user (DB error)",
                     extra={
                         "request_id": get_request_id(),
                         "user_id": getattr(user_data, "id", None),
+                        "exception_type": type(e).__name__,
+                        "exception_message": str(e),
                     },
                 )
+                # DB 관련 예외만 잡아서 로깅, 전파
                 raise
 
         return BulkSyncResponse(

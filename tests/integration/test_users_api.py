@@ -144,13 +144,20 @@ class TestBulkSyncAPI:
         assert response.status_code == 201
 
     @pytest.mark.asyncio
-    async def test_bulk_sync_persists_users(self, client, api_key_header):
+    async def test_bulk_sync_persists_users(
+        self, client, api_key_header, user_id_factory
+    ):
         """벌크 동기화 후 실제로 DB에 반영되는지 확인"""
-        users = [{"id": 101}, {"id": 102}, {"id": 103}]
+
+        # 고유한 테스트용 사용자 ID 생성
+        ids = user_id_factory(3)
+        users = [{"id": uid} for uid in ids]
 
         # When
         response = await client.post(
-            "/api/v1/users/bulk", json={"users": users}, headers=api_key_header
+            "/api/v1/users/bulk",
+            json={"users": users},
+            headers=api_key_header,
         )
 
         # Then
@@ -168,7 +175,7 @@ class TestBulkSyncAPI:
 
         returned_ids = {u["id"] for u in list_response.json()["data"]}
 
-        for uid in [101, 102, 103]:
+        for uid in ids:
             assert uid in returned_ids
 
 

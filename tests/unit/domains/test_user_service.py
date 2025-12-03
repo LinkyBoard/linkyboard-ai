@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.utils.datetime import now_utc
 from app.domains.users.exceptions import UserNotFoundException
@@ -169,16 +170,14 @@ class TestUserServiceBulkUpsert:
         with patch("app.domains.users.service.logger"):
             result = await user_service.bulk_upsert_users(users)
 
-            # Then
-            assert result.total == 3
-            assert result.created == 1
-            assert result.updated == 1
-            assert result.restored == 1
+        # Then
+        assert result.total == 3
+        assert result.created == 1
+        assert result.updated == 1
+        assert result.restored == 1
 
     @pytest.mark.asyncio
-    async def test_bulk_upsert_logs_and_raises_on_error(
-        self, user_service, caplog
-    ):
+    async def test_bulk_upsert_logs_and_raises_on_error(self, user_service):
         """벌크 동기화 중 예외 발생 시 로그 + 예외 전파 테스트"""
         # Given
         users = [
@@ -186,12 +185,13 @@ class TestUserServiceBulkUpsert:
             UserSync(id=2),
         ]
 
+        # 모든 사용자에 대해 get_by_id는 None (항상 새로 생성)
         user_service.repository.get_by_id = AsyncMock(return_value=None)
 
         async def create_side_effect(user: User):
-            # 첫 번째 유저는 정상, 두 번째 유저에서 에러 발생
+            # 첫 번째 유저는 정상, 두 번째 유저에서 DB 에러 발생
             if user.id == 2:
-                raise RuntimeError("DB error")
+                raise SQLAlchemyError("DB error")
             return user
 
         user_service.repository.create = AsyncMock(
@@ -201,12 +201,14 @@ class TestUserServiceBulkUpsert:
 
         # When + Then
         with patch("app.domains.users.service.logger") as mock_logger:
-            with pytest.raises(RuntimeError):
+            with pytest.raises(SQLAlchemyError):
                 await user_service.bulk_upsert_users(users)
 
+            # logger.exception 이 한 번 호출되었는지 확인
             mock_logger.exception.assert_called_once()
             _, kwargs = mock_logger.exception.call_args
 
+            # 로그에 어떤 user_id에서 실패했는지 남는지 확인
             assert kwargs["extra"]["user_id"] == 2
 
 

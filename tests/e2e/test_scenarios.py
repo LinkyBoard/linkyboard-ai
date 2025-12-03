@@ -115,6 +115,9 @@ class TestUserSyncScenarios:
         )
         assert response.status_code == 201
         # last_sync_at이 업데이트되어야 함
+        updated_user = response.json()["data"]
+        assert updated_user["last_sync_at"] is not None
+        assert updated_user["last_sync_at"] >= created_user["last_sync_at"]
 
         # 4. 사용자 삭제
         response = await client.delete(

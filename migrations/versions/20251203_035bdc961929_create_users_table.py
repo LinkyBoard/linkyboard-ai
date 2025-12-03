@@ -57,17 +57,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    # Soft Delete를 위한 부분 인덱스 (deleted_at IS NULL인 레코드만 인덱싱)
-    op.create_index(
-        "idx_users_active",
-        "users",
-        ["id"],
-        unique=False,
-        postgresql_where=sa.text("deleted_at IS NULL"),
-    )
-
 
 def downgrade() -> None:
     """다운그레이드 마이그레이션: users 테이블 삭제"""
-    op.drop_index("idx_users_active", table_name="users")
     op.drop_table("users")

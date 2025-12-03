@@ -22,7 +22,7 @@ def user_id_factory():
     테스트마다 겹치지 않는 PK를 만들기 위한 ID 팩토리.
     UTC 기준 현재 타임스탬프(ms)를 시작값으로 사용
     """
-    start = int(now_utc().timestamp())
+    start = int(now_utc().timestamp() * 1000) % 2_000_000_000
     counter = itertools.count(start=start)
 
     def _factory(n: int = 1):
@@ -51,7 +51,7 @@ def test_database_url(postgres_container: PostgresContainer) -> str:
     )
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture
 async def setup_test_database(test_database_url: str):
     """테스트 데이터베이스 테이블 생성"""
     engine = create_async_engine(test_database_url, echo=False)
@@ -75,6 +75,10 @@ async def db_session(test_database_url: str, setup_test_database):
     await engine.dispose()
 
 
+# NOTE:
+# pytest-asyncio(0.21+)는 기본적으로 테스트마다 독립적인 event loop를 생성
+# session 스코프 async fixture는 이 구조와 충돌하여 ScopeMismatch 에러를 유발할 수 있음
+# 이를 방지하기 위해 async fixture는 모두 function 스코프로 유지
 @pytest_asyncio.fixture
 async def client(db_session):
     """비동기 테스트 클라이언트 (테스트 DB 사용)"""
@@ -99,17 +103,6 @@ async def client(db_session):
 def anyio_backend():
     """anyio 백엔드 설정"""
     return "asyncio"
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Session-scoped event loop for async fixtures"""
-    import asyncio
-
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest.fixture

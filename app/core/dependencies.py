@@ -2,6 +2,7 @@
 
 이 모듈은 FastAPI 엔드포인트에서 사용되는 공통 의존성 함수들을 정의합니다.
 """
+import secrets
 
 from fastapi import Header
 
@@ -25,7 +26,10 @@ async def verify_internal_api_key(
         async def get_users():
             ...
     """
-    if x_internal_api_key != settings.internal_api_key:
+    # NOTE: 문자열 직접 비교는 타이밍 공격에 취약하므로 constant-time 비교 사용
+    if not secrets.compare_digest(
+        x_internal_api_key, settings.internal_api_key
+    ):
         raise UnauthorizedException(
             message="유효하지 않은 API 키입니다.",
             error_code="INVALID_API_KEY",
