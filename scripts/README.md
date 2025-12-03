@@ -26,17 +26,18 @@ LANGFUSE_HOST=https://us.cloud.langfuse.com
 
 ### LLM 통합 테스트
 
-실제 LLM API를 호출하여 통합 테스트를 수행합니다.
+실제 LLM API를 호출하여 Core LLM 인프라가 정상 작동하는지 검증합니다.
 
 ```bash
 make test-llm
 ```
 
-**확인 사항:**
-- Core LLM 공개 API import
-- 기본 LLM 호출 (티어 기반 fallback)
-- 임베딩 생성
-- LangFuse 트레이싱
+**테스트 항목:**
+1. 기본 LLM 호출 (LIGHT 티어)
+2. 스트리밍 LLM 호출 (STANDARD 티어)
+3. 임베딩 생성 (EMBEDDING 티어)
+4. Fallback 메커니즘 검증
+5. LangFuse 트레이싱 확인
 
 **필요한 환경 변수:**
 ```bash
@@ -44,7 +45,16 @@ make test-llm
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 GOOGLE_API_KEY=AIza...
+
+# 선택사항 (트레이싱)
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_HOST=https://us.cloud.langfuse.com
 ```
+
+**주의사항:**
+- 실제 API를 호출하므로 비용이 발생할 수 있습니다
+- 최소한의 토큰만 사용하도록 설계되었습니다
 
 ## 사용법
 
