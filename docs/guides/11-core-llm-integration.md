@@ -55,6 +55,10 @@ async for chunk in stream_with_fallback(
     print(chunk, end="", flush=True)
 ```
 
+**⚠️ 중요**: 스트리밍은 **시작 전까지만 fallback**을 지원합니다.
+- 스트리밍 시작 전 에러 (연결, 인증 등): 다음 모델로 fallback 시도
+- 스트리밍 중 에러: 즉시 종료 (이미 전송된 청크 손상 방지)
+
 ### 4. 임베딩
 
 ```python
@@ -129,14 +133,36 @@ LangFuse 대시보드에서 다음 정보를 확인할 수 있습니다:
 
 ## 에러 처리
 
-### 자동 Fallback
+### 자동 Fallback (비스트리밍만)
 
-첫 번째 모델 실패 시 자동으로 다음 모델로 재시도됩니다:
+`call_with_fallback()`은 첫 번째 모델 실패 시 자동으로 다음 모델로 재시도됩니다:
 
 ```
 light tier:
 claude-4.5-haiku (실패) → gpt-4.1-mini (실패) → gemini-2.0-flash (성공)
 ```
+
+### 스트리밍 에러 처리
+
+`stream_with_fallback()`은 **스트리밍 시작 전까지만 fallback**을 시도합니다:
+
+```python
+from app.core.llm.types import LLMProviderError, AllProvidersFailedError
+
+try:
+    async for chunk in stream_with_fallback(tier=LLMTier.STANDARD, messages=messages):
+        print(chunk, end="", flush=True)
+except AllProvidersFailedError as e:
+    # 모든 모델이 스트리밍 시작 전에 실패
+    logger.error(f"All models failed before streaming: {e.detail_info}")
+except LLMProviderError as e:
+    # 스트리밍 중간에 에러 발생 (fallback 불가)
+    logger.error(f"Streaming failed mid-stream: {e.detail_info}")
+```
+
+**동작 방식**:
+- **스트리밍 시작 전 에러**: 다음 모델로 자동 fallback
+- **스트리밍 중 에러**: 즉시 종료 (이미 전송된 청크 보호)
 
 ### 모든 모델 실패 시
 

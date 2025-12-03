@@ -69,6 +69,14 @@ test-watch: ## 파일 변경 시 자동 테스트 실행 (pytest-watch 필요)
 	poetry run ptw -- -v
 
 ##@ 코드 품질
+quality: ## 코드 품질 검사 (format + lint)
+	@echo "$(GREEN)Running code quality checks...$(NC)"
+	$(ISORT) app tests scripts
+	$(BLACK) app tests scripts
+	$(FLAKE8) app tests scripts
+	$(MYPY) app
+	@echo "$(GREEN)✓ Code quality checks passed$(NC)"
+
 lint: ## 린트 검사 (flake8 + mypy)
 	$(FLAKE8) app tests
 	$(MYPY) app

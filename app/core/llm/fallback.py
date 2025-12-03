@@ -108,10 +108,11 @@ async def stream_with_fallback(
     max_tokens: Optional[int] = None,
     **kwargs,
 ) -> AsyncGenerator[str, None]:
-    """티어 기반 스트리밍 호출 (자동 fallback)
+    """티어 기반 스트리밍 호출 (스트리밍 시작 전까지만 fallback)
 
-    첫 번째 모델이 실패하면 자동으로 다음 모델로 재시도합니다.
-    모든 모델이 실패하면 AllProvidersFailedError를 발생시킵니다.
+    스트리밍 시작 전 (첫 번째 청크 전)에 에러가 발생하면 다음 모델로
+    fallback을 시도합니다. 스트리밍이 시작된 후에는 이미 yield된 청크를
+    취소할 수 없으므로 즉시 에러를 발생시킵니다.
 
     Args:
         tier: LLM 티어
@@ -124,7 +125,8 @@ async def stream_with_fallback(
         str: 생성된 텍스트 청크
 
     Raises:
-        AllProvidersFailedError: 모든 모델 실패 시
+        AllProvidersFailedError: 모든 모델이 스트리밍 시작 전 실패 시
+        LLMProviderError: 스트리밍 중 에러 발생 시 (fallback 없음)
 
     Example:
         from app.core.llm import LLMTier, LLMMessage, stream_with_fallback
@@ -135,18 +137,24 @@ async def stream_with_fallback(
             messages=messages
         ):
             print(chunk, end="", flush=True)
+
+    Note:
+        - 연결 실패, 인증 에러 등 초기 에러: fallback 시도
+        - 스트리밍 중간 에러: 즉시 종료 (응답 손상 방지)
     """
     models = FALLBACK_ORDER.get(tier.value, [])
     if not models:
         raise ValueError(f"Unknown LLM tier: {tier}")
 
     attempted_models = []
+    streaming_started = False
 
     for model in models:
         try:
             logger.info(
                 f"Attempting streaming call with tier={tier}, model={model}"
             )
+
             async for chunk in astream_completion_raw(
                 model=model,
                 messages=messages,
@@ -154,19 +162,36 @@ async def stream_with_fallback(
                 max_tokens=max_tokens,
                 **kwargs,
             ):
+                # 첫 번째 청크를 성공적으로 받음 - 스트리밍 시작
+                if not streaming_started:
+                    streaming_started = True
+                    logger.info(f"Streaming started with model={model}")
+
                 yield chunk
-            logger.info(f"Streaming call succeeded with model={model}")
-            return  # 성공 시 종료
+
+            # 스트리밍 성공 완료
+            logger.info(f"Streaming completed successfully with model={model}")
+            return
 
         except LLMProviderError as e:
+            # 스트리밍이 시작된 후 에러: fallback 없이 즉시 종료
+            if streaming_started:
+                logger.error(
+                    f"Streaming failed mid-stream with model={model}: "
+                    f"{e.detail_info['error']}. "
+                    "Cannot fallback - chunks already sent."
+                )
+                raise
+
+            # 스트리밍 시작 전 에러: fallback 시도
             attempted_models.append(model)
             logger.warning(
-                f"Streaming model {model} failed (tier={tier}): "
+                f"Model {model} failed before streaming (tier={tier}): "
                 f"{e.detail_info['error']}. Trying next model..."
             )
             continue
 
-    # 모든 모델 실패
+    # 모든 모델이 스트리밍 시작 전에 실패
     raise AllProvidersFailedError(tier=tier.value, attempts=attempted_models)
 
 
