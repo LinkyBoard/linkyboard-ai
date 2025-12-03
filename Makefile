@@ -126,6 +126,13 @@ docker-exec: ## API 컨테이너 쉘 접속
 docker-ps: ## 실행 중인 컨테이너 확인
 	docker-compose ps
 
+##@ LLM & Observability
+test-langfuse: ## LangFuse 연결 테스트
+	PYTHONPATH=. $(PYTHON) scripts/test_langfuse_connection.py
+
+test-llm: ## LLM 통합 테스트 (실제 API 호출)
+	PYTHONPATH=. $(PYTHON) scripts/test_llm_integration.py
+
 ##@ 유틸리티
 clean: ## 캐시 및 임시 파일 삭제
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
