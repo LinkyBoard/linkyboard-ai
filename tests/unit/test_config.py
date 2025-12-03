@@ -75,6 +75,7 @@ class TestProductionConfig:
                 "valid-internal-api-key-with-32-characters-minimum"
             ),
             secret_key="valid-secret-key-with-32-characters-or-more",
+            openai_api_key="sk-test-key-for-production-validation",
         )
         assert config.is_production
         assert len(config.internal_api_key) >= 32

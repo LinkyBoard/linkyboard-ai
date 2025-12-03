@@ -13,6 +13,7 @@ from app.core.exceptions import (
     generic_exception_handler,
     http_exception_handler,
 )
+from app.core.llm.observability import langfuse_client
 from app.core.logging import get_logger, setup_logging
 from app.core.middlewares import LoggingMiddleware
 from app.core.migration import run_migrations_on_startup
@@ -31,6 +32,14 @@ async def lifespan(app: FastAPI):
 
     # 마이그레이션 확인 및 자동 업데이트
     run_migrations_on_startup(auto_migrate=settings.auto_migrate)
+
+    # LangFuse 옵저버빌리티 상태 확인
+    if langfuse_client:
+        logger.info("✅ LangFuse observability enabled")
+    else:
+        logger.warning(
+            "⚠️  LangFuse observability disabled (continuing without tracing)"
+        )
 
     yield
     # Shutdown

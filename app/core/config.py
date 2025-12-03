@@ -47,6 +47,17 @@ class Settings(BaseSettings):
         "http://localhost:8080",
     ]
 
+    # LLM Provider API Keys
+    openai_api_key: str = "sk-your-openai-key-here"
+    anthropic_api_key: str = "sk-ant-your-anthropic-key-here"
+    google_api_key: str = "AIza-your-google-key-here"
+    perplexity_api_key: str = "pplx-your-perplexity-key-here"
+
+    # LangFuse Observability
+    langfuse_secret_key: str = "sk-lf-your-secret-key-here"
+    langfuse_public_key: str = "pk-lf-your-public-key-here"
+    langfuse_host: str = "https://cloud.langfuse.com"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
@@ -88,6 +99,20 @@ class Settings(BaseSettings):
         if len(self.secret_key) < 32:
             raise ValueError(
                 "SECRET_KEY must be at least 32 characters long for security."
+            )
+
+        # LLM API 키 검증 (최소 1개 필요)
+        has_llm_provider = any(
+            [
+                self.openai_api_key != "sk-your-openai-key-here",
+                self.anthropic_api_key != "sk-ant-your-anthropic-key-here",
+                self.google_api_key != "AIza-your-google-key-here",
+            ]
+        )
+        if not has_llm_provider:
+            raise ValueError(
+                "Production requires at least one LLM provider API key. "
+                "Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY."
             )
 
         return self
