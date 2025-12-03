@@ -85,22 +85,35 @@ def run_migrations() -> bool:
     try:
         config = get_alembic_config()
 
-        # 마이그레이션 상태 확인
-        status = check_migration_status()
+        # 마이그레이션 상태 확인 (실행 전)
+        status_before = check_migration_status()
 
-        if status["is_up_to_date"]:
-            logger.info(f"✅ 마이그레이션이 최신 상태입니다 (revision: {status['current']})")
+        if status_before["is_up_to_date"]:
+            logger.info(
+                f"✅ 마이그레이션이 최신 상태입니다 (revision: {status_before['current']})"
+            )
             return True
 
         logger.info(
-            f"🔄 마이그레이션 업데이트 중... ({status['current']} → {status['head']})"
+            f"🔄 마이그레이션 업데이트 중... "
+            f"({status_before['current']} → {status_before['head']})"
         )
 
         # 마이그레이션 실행
         command.upgrade(config, "head")
 
-        logger.info(f"✅ 마이그레이션 완료 (revision: {status['head']})")
-        return True
+        # 마이그레이션 상태 확인 (실행 후)
+        status_after = check_migration_status()
+
+        if status_after["is_up_to_date"]:
+            logger.info(f"✅ 마이그레이션 완료 (revision: {status_after['current']})")
+            return True
+        else:
+            logger.error(
+                f"❌ 마이그레이션 후에도 최신 상태가 아닙니다 "
+                f"(현재: {status_after['current']}, 최신: {status_after['head']})"
+            )
+            return False
 
     except Exception as e:
         logger.error(f"❌ 마이그레이션 실행 실패: {e}")
