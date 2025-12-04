@@ -195,6 +195,28 @@ class S3Client:
             return file_content
 
         except ClientError as e:
+            error_code_str = e.response.get("Error", {}).get("Code", "")
+
+            # NoSuchKey 에러는 파일 없음으로 처리
+            if error_code_str == "NoSuchKey":
+                logger.warning(
+                    "PDF file not found in S3",
+                    extra={
+                        "bucket": self.bucket,
+                        "key": object_key,
+                        "file_hash": file_hash,
+                    },
+                )
+                raise StorageException(
+                    message="파일을 찾을 수 없습니다.",
+                    error_code=ErrorCode.S3_DOWNLOAD_FAILED,
+                    detail={
+                        "file_hash": file_hash,
+                        "error": "File not found",
+                    },
+                )
+
+            # 기타 에러
             logger.exception(
                 "S3 download failed",
                 extra={
@@ -232,7 +254,7 @@ class S3Client:
 
         # MinIO는 path-style, AWS S3는 virtual-hosted-style
         endpoint = self.settings.s3_endpoint
-        if "localhost" in endpoint or "127.0.0.1" in endpoint:
+        if endpoint and ("localhost" in endpoint or "127.0.0.1" in endpoint):
             # MinIO (path-style)
             clean_endpoint = endpoint.replace("http://", "").replace(
                 "https://", ""
@@ -241,7 +263,11 @@ class S3Client:
         else:
             # AWS S3 (virtual-hosted-style)
             region = self.settings.s3_region
-            host = f"{self.bucket}.s3.{region}.amazonaws.com"
+            if region == "us-east-1":
+                # us-east-1은 리전 표기 생략
+                host = f"{self.bucket}.s3.amazonaws.com"
+            else:
+                host = f"{self.bucket}.s3.{region}.amazonaws.com"
             url = f"{protocol}://{host}/{object_key}"
 
         return url

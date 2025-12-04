@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ForbiddenException
 from app.core.logging import get_logger
 from app.core.middlewares.context import get_request_id
-from app.core.storage import get_s3_client
+from app.core.storage import S3Client, get_s3_client
 from app.domains.contents.exceptions import ContentNotFoundException
 from app.domains.contents.models import Content, ContentType, ProcessingStatus
 from app.domains.contents.repository import ContentFilters, ContentRepository
@@ -27,10 +27,12 @@ logger = get_logger(__name__)
 class ContentService:
     """콘텐츠 서비스"""
 
-    def __init__(self, session: AsyncSession):
+    def __init__(
+        self, session: AsyncSession, s3_client: S3Client | None = None
+    ):
         self.session = session
         self.repository = ContentRepository(session)
-        self.s3_client = get_s3_client()
+        self.s3_client = s3_client or get_s3_client()
 
     async def sync_webpage(self, data: WebpageSyncRequest) -> Content:
         """웹페이지 콘텐츠 동기화

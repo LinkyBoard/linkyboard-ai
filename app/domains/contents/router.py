@@ -14,6 +14,7 @@ from app.core.schemas import (
     create_list_response,
     create_response,
 )
+from app.core.storage import S3Client, get_s3_client
 from app.core.utils.pagination import PageParams
 from app.domains.contents.schemas import (
     ContentDeleteRequest,
@@ -32,9 +33,10 @@ router = APIRouter()
 
 def get_content_service(
     session: AsyncSession = Depends(get_db),
+    s3_client: S3Client = Depends(get_s3_client),
 ) -> ContentService:
     """ContentService 의존성"""
-    return ContentService(session)
+    return ContentService(session, s3_client)
 
 
 @router.post(
@@ -164,15 +166,12 @@ async def delete_contents(
     dependencies=[Depends(verify_internal_api_key)],
 )
 async def list_contents(
+    user_id: int,
     page_params: PageParams = Depends(),
-    user_id: int | None = None,
     filters: ContentListRequest = Depends(),
     service: ContentService = Depends(get_content_service),
 ):
     """콘텐츠 목록 조회"""
-    if user_id is None:
-        raise ValueError("user_id는 필수 파라미터입니다.")
-
     contents, total = await service.list_contents(
         user_id=user_id,
         page=page_params.page,

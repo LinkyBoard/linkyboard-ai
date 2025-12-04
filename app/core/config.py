@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import List
+from typing import List, Optional
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -59,7 +59,9 @@ class Settings(BaseSettings):
     langfuse_host: str = "https://cloud.langfuse.com"
 
     # S3/MinIO Storage
-    s3_endpoint: str = "http://localhost:9000"  # MinIO(dev) / AWS S3(prod)
+    s3_endpoint: Optional[
+        str
+    ] = "http://localhost:9000"  # MinIO(dev) / None for AWS S3
     s3_access_key: str = "minioadmin"
     s3_secret_key: str = "minioadmin"
     s3_bucket_contents: str = "linkyboard-contents"
