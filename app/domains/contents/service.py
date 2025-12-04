@@ -3,6 +3,8 @@
 콘텐츠 동기화 및 관리를 위한 비즈니스 로직 계층입니다.
 """
 
+from typing import List
+
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -193,7 +195,7 @@ class ContentService:
         file_hash = self.s3_client.calculate_file_hash(file_content)
 
         # 파일 크기 검증
-        self.s3_client.validate_file_size(len(file_content))
+        self.s3_client.ensure_valid_file_size(len(file_content))
 
         # S3 업로드
         object_key = self.s3_client.upload_pdf(file_content, file_hash)
@@ -353,9 +355,8 @@ class ContentService:
 
             # 실패한 항목 계산
             failed_count = len(content_ids) - deleted_count
-            failed_items = (
-                [] if failed_count == 0 else content_ids[:failed_count]
-            )
+            # 배치 작업에서는 어떤 항목이 실패했는지 알 수 없음
+            failed_items: List[int] = []
 
             logger.info(
                 "Contents deleted",

@@ -7,7 +7,16 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import ARRAY, DateTime, Index, Integer, String, Text, func
+from sqlalchemy import (
+    ARRAY,
+    DateTime,
+    Index,
+    Integer,
+    String,
+    Text,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -174,7 +183,7 @@ class Content(Base):
         Index(
             "ix_contents_user_id_not_deleted",
             "user_id",
-            postgresql_where=(deleted_at.is_(None)),
+            postgresql_where=text("deleted_at IS NULL"),
         ),
         Index("ix_contents_source_url", "source_url"),
         Index("ix_contents_content_type", "content_type", "user_id"),

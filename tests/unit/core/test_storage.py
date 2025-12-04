@@ -69,7 +69,7 @@ class TestS3ClientValidation:
         file_size = 10 * 1024 * 1024  # 10MB
 
         # When / Then
-        client.validate_file_size(file_size)  # 예외 발생하지 않음
+        client.ensure_valid_file_size(file_size)  # 예외 발생하지 않음
 
     def test_validate_file_size_exceeds(self):
         """파일 크기 초과 시 예외 발생"""
@@ -86,7 +86,7 @@ class TestS3ClientValidation:
 
         # When / Then
         with pytest.raises(StorageException) as exc_info:
-            client.validate_file_size(file_size)
+            client.ensure_valid_file_size(file_size)
         assert "파일 크기가 제한을 초과" in exc_info.value.message
 
     def test_validate_file_size_exact_limit(self):
@@ -103,7 +103,7 @@ class TestS3ClientValidation:
         file_size = 50 * 1024 * 1024  # Exactly 50MB
 
         # When / Then
-        client.validate_file_size(file_size)  # 예외 발생하지 않음
+        client.ensure_valid_file_size(file_size)  # 예외 발생하지 않음
 
 
 class TestS3ClientUploadDownload:

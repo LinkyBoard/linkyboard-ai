@@ -201,7 +201,7 @@ class TestContentServicePDF:
         assert result.id == 3
         assert result.content_type == ContentType.PDF
         assert returned_hash == file_hash
-        mock_s3_client.validate_file_size.assert_called_once()
+        mock_s3_client.ensure_valid_file_size.assert_called_once()
         mock_s3_client.upload_pdf.assert_called_once()
         content_service.repository.create.assert_called_once()
 
@@ -399,7 +399,8 @@ class TestContentServiceDelete:
         # Then
         assert result.deleted_count == 2
         assert result.total_requested == 3
-        assert len(result.failed_items) == 1  # 1개 실패
+        # 배치 작업에서는 어떤 항목이 실패했는지 알 수 없으므로 failed_items는 빈 리스트
+        assert result.failed_items == []
 
     @pytest.mark.asyncio
     async def test_delete_contents_exceeds_limit(self, content_service):

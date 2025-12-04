@@ -67,17 +67,14 @@ class S3Client:
         """
         return hashlib.sha256(file_content).hexdigest()
 
-    def validate_file_size(
+    def ensure_valid_file_size(
         self, file_size: int, max_size: Optional[int] = None
-    ) -> bool:
-        """파일 크기 검증
+    ) -> None:
+        """파일 크기 검증 및 보장
 
         Args:
             file_size: 파일 크기 (bytes)
             max_size: 최대 크기 (bytes, None이면 설정값 사용)
-
-        Returns:
-            유효하면 True
 
         Raises:
             StorageException: 파일 크기가 제한을 초과하는 경우
@@ -95,8 +92,6 @@ class S3Client:
                 },
             )
 
-        return True
-
     def upload_pdf(self, file_content: bytes, file_hash: str) -> str:
         """PDF 파일을 S3에 업로드
 
@@ -110,9 +105,6 @@ class S3Client:
         Raises:
             StorageException: S3 업로드 실패 시
         """
-        # 파일 크기 검증
-        self.validate_file_size(len(file_content))
-
         # S3 객체 키 생성
         object_key = f"pdfs/{file_hash}.pdf"
 
@@ -254,8 +246,8 @@ class S3Client:
 
         # MinIO는 path-style, AWS S3는 virtual-hosted-style
         endpoint = self.settings.s3_endpoint
-        if endpoint and ("localhost" in endpoint or "127.0.0.1" in endpoint):
-            # MinIO (path-style)
+        if endpoint:
+            # MinIO or custom S3-compatible storage (path-style)
             clean_endpoint = endpoint.replace("http://", "").replace(
                 "https://", ""
             )

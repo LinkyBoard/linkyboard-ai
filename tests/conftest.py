@@ -114,7 +114,10 @@ async def client(db_session, minio_container: MinioContainer):
         test_s3_client.client.create_bucket(
             Bucket=test_settings.s3_bucket_contents
         )
-    except test_s3_client.client.exceptions.BucketAlreadyOwnedByYou:
+    except (
+        test_s3_client.client.exceptions.BucketAlreadyOwnedByYou,
+        test_s3_client.client.exceptions.BucketAlreadyExists,
+    ):
         pass
 
     # S3 클라이언트 의존성 오버라이드
@@ -183,7 +186,10 @@ def test_s3_client(minio_container: MinioContainer):
     # 테스트 버킷 생성 (이미 존재하면 무시)
     try:
         client.client.create_bucket(Bucket=test_settings.s3_bucket_contents)
-    except client.client.exceptions.BucketAlreadyOwnedByYou:
+    except (
+        client.client.exceptions.BucketAlreadyOwnedByYou,
+        client.client.exceptions.BucketAlreadyExists,
+    ):
         pass
 
     yield client
