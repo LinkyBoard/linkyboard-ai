@@ -76,6 +76,8 @@ class TestProductionConfig:
             ),
             secret_key="valid-secret-key-with-32-characters-or-more",
             openai_api_key="sk-test-key-for-production-validation",
+            s3_access_key="valid-s3-access-key-for-production",
+            s3_secret_key="valid-s3-secret-key-for-production",
         )
         assert config.is_production
         assert len(config.internal_api_key) >= 32
