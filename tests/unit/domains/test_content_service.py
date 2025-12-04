@@ -247,8 +247,8 @@ class TestContentServicePDF:
         assert result.summary_status == SummaryStatus.PENDING  # 상태 리셋
         assert result.embedding_status == EmbeddingStatus.PENDING  # 상태 리셋
         assert returned_hash == file_hash
-        # S3 업로드는 실행되지만 DB에서 중복이므로 메타데이터만 업데이트
-        mock_s3_client.upload_pdf.assert_called_once()
+        # 중복 PDF이므로 S3 업로드 없이 메타데이터만 업데이트
+        mock_s3_client.upload_pdf.assert_not_called()
         content_service.repository.update.assert_called_once()
 
 

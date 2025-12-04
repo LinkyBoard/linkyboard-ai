@@ -197,20 +197,7 @@ class ContentService:
         # 파일 크기 검증
         self.s3_client.ensure_valid_file_size(len(file_content))
 
-        # S3 업로드
-        object_key = self.s3_client.upload_pdf(file_content, file_hash)
-
-        logger.info(
-            "PDF uploaded to S3",
-            extra={
-                "request_id": get_request_id(),
-                "file_hash": file_hash,
-                "object_key": object_key,
-                "size": len(file_content),
-            },
-        )
-
-        # file_hash로 중복 탐지
+        # file_hash로 중복 탐지 (S3 업로드 전)
         existing = await self.repository.get_by_file_hash(
             file_hash, data.user_id
         )
@@ -228,6 +215,19 @@ class ContentService:
             content = await self.repository.update(existing)
             action = "updated"
         else:
+            # S3 업로드 (새 파일일 때만)
+            object_key = self.s3_client.upload_pdf(file_content, file_hash)
+
+            logger.info(
+                "PDF uploaded to S3",
+                extra={
+                    "request_id": get_request_id(),
+                    "file_hash": file_hash,
+                    "object_key": object_key,
+                    "size": len(file_content),
+                },
+            )
+
             # 생성
             content = Content(
                 id=data.content_id,
