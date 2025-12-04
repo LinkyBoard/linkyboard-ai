@@ -17,6 +17,13 @@ from app.core.utils.datetime import now_utc
 from app.main import app
 
 
+def normalize_endpoint(endpoint: str) -> str:
+    """endpoint URL에 프로토콜이 없으면 http:// 추가"""
+    if not endpoint.startswith(("http://", "https://")):
+        return f"http://{endpoint}"
+    return endpoint
+
+
 @pytest.fixture(scope="session")
 def user_id_factory():
     """
@@ -94,9 +101,7 @@ async def client(db_session, minio_container: MinioContainer):
 
     # MinIO 설정으로 테스트 S3 클라이언트 생성
     config = minio_container.get_config()
-    endpoint = config["endpoint"]
-    if not endpoint.startswith(("http://", "https://")):
-        endpoint = f"http://{endpoint}"
+    endpoint = normalize_endpoint(config["endpoint"])
 
     test_settings = Settings(
         s3_endpoint=endpoint,
@@ -167,10 +172,7 @@ def test_s3_client(minio_container: MinioContainer):
 
     # MinIO 설정으로 테스트 클라이언트 생성
     config = minio_container.get_config()
-    endpoint = config["endpoint"]
-    # boto3는 프로토콜이 필요함
-    if not endpoint.startswith(("http://", "https://")):
-        endpoint = f"http://{endpoint}"
+    endpoint = normalize_endpoint(config["endpoint"])
 
     test_settings = Settings(
         s3_endpoint=endpoint,

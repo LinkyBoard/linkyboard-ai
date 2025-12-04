@@ -6,6 +6,7 @@ PDF 파일 업로드/다운로드를 위한 S3 클라이언트
 import hashlib
 from functools import lru_cache
 from typing import Optional
+from urllib.parse import urlparse
 
 import boto3
 from botocore.client import Config
@@ -248,10 +249,10 @@ class S3Client:
         endpoint = self.settings.s3_endpoint
         if endpoint:
             # MinIO or custom S3-compatible storage (path-style)
-            clean_endpoint = endpoint.replace("http://", "").replace(
-                "https://", ""
-            )
-            url = f"{protocol}://{clean_endpoint}/{self.bucket}/{object_key}"
+            parsed = urlparse(endpoint)
+            # netloc이 있으면 사용, 없으면 path 사용 (프로토콜 없는 경우)
+            host = parsed.netloc or parsed.path
+            url = f"{protocol}://{host}/{self.bucket}/{object_key}"
         else:
             # AWS S3 (virtual-hosted-style)
             region = self.settings.s3_region
