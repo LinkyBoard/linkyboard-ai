@@ -15,6 +15,16 @@ from app.core.database import Base  # noqa: E402
 
 # 모든 모델 임포트 (마이그레이션 감지를 위해)
 from app.domains.users.models import User  # noqa: F401, E402
+from app.domains.contents.models import Content  # noqa: F401, E402
+from app.domains.ai.models import (  # noqa: F401, E402
+    Category,
+    ChunkStrategy,
+    ContentEmbeddingMetadata,
+    SummaryCache,
+    Tag,
+    UserCategoryUsage,
+    UserTagUsage,
+)
 
 # Alembic Config 객체
 config = context.config

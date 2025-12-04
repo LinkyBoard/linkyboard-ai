@@ -39,7 +39,7 @@ services:
 
   # PostgreSQL 데이터베이스
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: linkyboard-ai-db
     ports:
       - "5432:5432"
