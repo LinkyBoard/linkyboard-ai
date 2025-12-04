@@ -21,13 +21,22 @@ class ContentType(str, Enum):
     PDF = "pdf"
 
 
-class ProcessingStatus(str, Enum):
-    """AI 처리 상태"""
+class SummaryStatus(str, Enum):
+    """요약 생성 상태 (AI 도메인 독립 프로세스)"""
 
-    RAW = "raw"  # 원본 저장됨, AI 처리 대기
-    PROCESSED = "processed"  # 요약/태그 추출 완료
-    EMBEDDED = "embedded"  # 벡터 임베딩 생성 완료
-    FAILED = "failed"  # 처리 실패
+    PENDING = "pending"  # 요약 대기
+    PROCESSING = "processing"  # 요약 생성 중
+    COMPLETED = "completed"  # 요약 완료
+    FAILED = "failed"  # 요약 실패
+
+
+class EmbeddingStatus(str, Enum):
+    """임베딩 생성 상태 (AI 도메인 독립 프로세스)"""
+
+    PENDING = "pending"  # 임베딩 대기
+    PROCESSING = "processing"  # 임베딩 생성 중
+    COMPLETED = "completed"  # 임베딩 완료
+    FAILED = "failed"  # 임베딩 실패
 
 
 class Content(Base):
@@ -55,18 +64,25 @@ class Content(Base):
         comment="사용자 ID (Spring Boot 동기화)",
     )
 
-    # Content Type & Processing Status
+    # Content Type & AI Processing Status
     content_type: Mapped[ContentType] = mapped_column(
         String(20),
         nullable=False,
         comment="콘텐츠 타입 (webpage/youtube/pdf)",
     )
-    processing_status: Mapped[ProcessingStatus] = mapped_column(
+    summary_status: Mapped[SummaryStatus] = mapped_column(
         String(20),
         nullable=False,
-        default=ProcessingStatus.RAW,
-        server_default="raw",
-        comment="AI 처리 상태",
+        default=SummaryStatus.PENDING,
+        server_default="pending",
+        comment="요약 생성 상태 (AI 도메인 독립 프로세스)",
+    )
+    embedding_status: Mapped[EmbeddingStatus] = mapped_column(
+        String(20),
+        nullable=False,
+        default=EmbeddingStatus.PENDING,
+        server_default="pending",
+        comment="임베딩 생성 상태 (AI 도메인 독립 프로세스)",
     )
 
     # Source Information (웹페이지/YouTube만)
@@ -162,12 +178,15 @@ class Content(Base):
         ),
         Index("ix_contents_source_url", "source_url"),
         Index("ix_contents_content_type", "content_type", "user_id"),
-        Index("ix_contents_processing_status", "processing_status"),
+        Index("ix_contents_summary_status", "summary_status"),
+        Index("ix_contents_embedding_status", "embedding_status"),
         Index("ix_contents_created_at", "created_at"),
     )
 
     def __repr__(self) -> str:
         return (
             f"<Content(id={self.id}, type={self.content_type}, "
-            f"user_id={self.user_id}, status={self.processing_status})>"
+            f"user_id={self.user_id}, "
+            f"summary={self.summary_status}, "
+            f"embedding={self.embedding_status})>"
         )

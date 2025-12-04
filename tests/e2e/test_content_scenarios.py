@@ -56,7 +56,8 @@ class TestWebpageLifecycle:
         content = response.json()["data"]
         assert content["title"] == "Original Title"
         assert content["content_type"] == "webpage"
-        assert content["processing_status"] == "raw"
+        assert content["summary_status"] == "pending"
+        assert content["embedding_status"] == "pending"
 
         # 3. 동일 URL 재동기화 (업데이트)
         response = await client.post(

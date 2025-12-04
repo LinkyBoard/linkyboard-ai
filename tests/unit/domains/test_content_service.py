@@ -7,7 +7,12 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.exceptions import ForbiddenException
 from app.domains.contents.exceptions import ContentNotFoundException
-from app.domains.contents.models import Content, ContentType, ProcessingStatus
+from app.domains.contents.models import (
+    Content,
+    ContentType,
+    EmbeddingStatus,
+    SummaryStatus,
+)
 from app.domains.contents.schemas import (
     PDFSyncRequest,
     WebpageSyncRequest,
@@ -58,7 +63,8 @@ class TestContentServiceWebpage:
             id=1,
             user_id=100,
             content_type=ContentType.WEBPAGE,
-            processing_status=ProcessingStatus.RAW,
+            summary_status=SummaryStatus.PENDING,
+            embedding_status=EmbeddingStatus.PENDING,
             source_url="https://example.com",
             title="Test Page",
         )
@@ -73,7 +79,8 @@ class TestContentServiceWebpage:
         # Then
         assert result.id == 1
         assert result.content_type == ContentType.WEBPAGE
-        assert result.processing_status == ProcessingStatus.RAW
+        assert result.summary_status == SummaryStatus.PENDING
+        assert result.embedding_status == EmbeddingStatus.PENDING
         content_service.repository.create.assert_called_once()
 
     @pytest.mark.asyncio
@@ -91,7 +98,8 @@ class TestContentServiceWebpage:
             id=1,
             user_id=100,
             content_type=ContentType.WEBPAGE,
-            processing_status=ProcessingStatus.PROCESSED,
+            summary_status=SummaryStatus.COMPLETED,
+            embedding_status=EmbeddingStatus.COMPLETED,
             source_url="https://example.com",
             title="Old Title",
         )
@@ -108,7 +116,8 @@ class TestContentServiceWebpage:
 
         # Then
         assert result.title == "Updated Title"
-        assert result.processing_status == ProcessingStatus.RAW  # 상태 리셋
+        assert result.summary_status == SummaryStatus.PENDING  # 상태 리셋
+        assert result.embedding_status == EmbeddingStatus.PENDING  # 상태 리셋
         content_service.repository.update.assert_called_once()
 
 
@@ -131,7 +140,8 @@ class TestContentServiceYouTube:
             id=2,
             user_id=100,
             content_type=ContentType.YOUTUBE,
-            processing_status=ProcessingStatus.RAW,
+            summary_status=SummaryStatus.PENDING,
+            embedding_status=EmbeddingStatus.PENDING,
             source_url="https://youtube.com/watch?v=test",
             title="Test Video",
         )
@@ -172,7 +182,8 @@ class TestContentServicePDF:
             id=3,
             user_id=100,
             content_type=ContentType.PDF,
-            processing_status=ProcessingStatus.RAW,
+            summary_status=SummaryStatus.PENDING,
+            embedding_status=EmbeddingStatus.PENDING,
             file_hash=file_hash,
             title="Test PDF",
         )
@@ -213,7 +224,8 @@ class TestContentServicePDF:
             id=3,
             user_id=100,
             content_type=ContentType.PDF,
-            processing_status=ProcessingStatus.EMBEDDED,
+            summary_status=SummaryStatus.COMPLETED,
+            embedding_status=EmbeddingStatus.COMPLETED,
             file_hash=file_hash,
             title="Old PDF Title",
         )
@@ -232,7 +244,8 @@ class TestContentServicePDF:
 
         # Then
         assert result.title == "Updated PDF Title"
-        assert result.processing_status == ProcessingStatus.RAW  # 상태 리셋
+        assert result.summary_status == SummaryStatus.PENDING  # 상태 리셋
+        assert result.embedding_status == EmbeddingStatus.PENDING  # 상태 리셋
         assert returned_hash == file_hash
         # S3 업로드는 실행되지만 DB에서 중복이므로 메타데이터만 업데이트
         mock_s3_client.upload_pdf.assert_called_once()
@@ -250,7 +263,8 @@ class TestContentServiceGet:
             id=1,
             user_id=100,
             content_type=ContentType.WEBPAGE,
-            processing_status=ProcessingStatus.RAW,
+            summary_status=SummaryStatus.PENDING,
+            embedding_status=EmbeddingStatus.PENDING,
             title="Test",
         )
         content_service.repository.get_by_id = AsyncMock(
@@ -282,7 +296,8 @@ class TestContentServiceGet:
             id=1,
             user_id=200,  # 다른 사용자
             content_type=ContentType.WEBPAGE,
-            processing_status=ProcessingStatus.RAW,
+            summary_status=SummaryStatus.PENDING,
+            embedding_status=EmbeddingStatus.PENDING,
             title="Test",
         )
         content_service.repository.get_by_id = AsyncMock(
@@ -307,14 +322,16 @@ class TestContentServiceList:
                 id=1,
                 user_id=100,
                 content_type=ContentType.WEBPAGE,
-                processing_status=ProcessingStatus.RAW,
+                summary_status=SummaryStatus.PENDING,
+                embedding_status=EmbeddingStatus.PENDING,
                 title="Content 1",
             ),
             Content(
                 id=2,
                 user_id=100,
                 content_type=ContentType.PDF,
-                processing_status=ProcessingStatus.PROCESSED,
+                summary_status=SummaryStatus.COMPLETED,
+                embedding_status=EmbeddingStatus.COMPLETED,
                 title="Content 2",
             ),
         ]

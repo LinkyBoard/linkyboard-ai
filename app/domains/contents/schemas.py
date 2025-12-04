@@ -8,7 +8,11 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
-from app.domains.contents.models import ContentType, ProcessingStatus
+from app.domains.contents.models import (
+    ContentType,
+    EmbeddingStatus,
+    SummaryStatus,
+)
 
 # Request Schemas
 
@@ -104,9 +108,6 @@ class ContentListRequest(BaseModel):
         None, max_length=100, description="카테고리 필터"
     )
     tags: Optional[list[str]] = Field(None, description="태그 필터 (OR 조건)")
-    processing_status: Optional[ProcessingStatus] = Field(
-        None, description="처리 상태 필터"
-    )
     date_from: Optional[datetime] = Field(None, description="시작 날짜 필터")
     date_to: Optional[datetime] = Field(None, description="종료 날짜 필터")
 
@@ -122,7 +123,8 @@ class ContentResponse(BaseModel):
     id: int
     user_id: int
     content_type: ContentType
-    processing_status: ProcessingStatus
+    summary_status: SummaryStatus
+    embedding_status: EmbeddingStatus
     source_url: Optional[str] = None
     file_hash: Optional[str] = None
     title: str

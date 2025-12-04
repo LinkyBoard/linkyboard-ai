@@ -11,7 +11,7 @@ from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils.datetime import now_utc
-from app.domains.contents.models import Content, ContentType, ProcessingStatus
+from app.domains.contents.models import Content, ContentType
 
 
 @dataclass
@@ -24,7 +24,6 @@ class ContentFilters:
     content_type: Optional[ContentType] = None
     category: Optional[str] = None
     tags: Optional[list[str]] = None
-    processing_status: Optional[ProcessingStatus] = None
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
 
@@ -140,11 +139,6 @@ class ContentRepository:
                 # PostgreSQL ARRAY에서 ANY 연산자 사용 (OR 로직)
                 query = query.where(Content.tags.overlap(filters.tags))
 
-            if filters.processing_status:
-                query = query.where(
-                    Content.processing_status == filters.processing_status
-                )
-
             if filters.date_from:
                 query = query.where(Content.created_at >= filters.date_from)
 
@@ -192,11 +186,6 @@ class ContentRepository:
 
             if filters.tags:
                 query = query.where(Content.tags.overlap(filters.tags))
-
-            if filters.processing_status:
-                query = query.where(
-                    Content.processing_status == filters.processing_status
-                )
 
             if filters.date_from:
                 query = query.where(Content.created_at >= filters.date_from)

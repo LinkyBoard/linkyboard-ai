@@ -11,7 +11,12 @@ from app.core.logging import get_logger
 from app.core.middlewares.context import get_request_id
 from app.core.storage import S3Client, get_s3_client
 from app.domains.contents.exceptions import ContentNotFoundException
-from app.domains.contents.models import Content, ContentType, ProcessingStatus
+from app.domains.contents.models import (
+    Content,
+    ContentType,
+    EmbeddingStatus,
+    SummaryStatus,
+)
 from app.domains.contents.repository import ContentFilters, ContentRepository
 from app.domains.contents.schemas import (
     ContentDeleteResponse,
@@ -63,7 +68,8 @@ class ContentService:
             existing.memo = data.memo
             existing.tags = data.tags
             existing.category = data.category
-            existing.processing_status = ProcessingStatus.RAW
+            existing.summary_status = SummaryStatus.PENDING
+            existing.embedding_status = EmbeddingStatus.PENDING
 
             content = await self.repository.update(existing)
             action = "updated"
@@ -73,7 +79,8 @@ class ContentService:
                 id=data.content_id,
                 user_id=data.user_id,
                 content_type=ContentType.WEBPAGE,
-                processing_status=ProcessingStatus.RAW,
+                summary_status=SummaryStatus.PENDING,
+                embedding_status=EmbeddingStatus.PENDING,
                 source_url=str(data.url),
                 title=data.title,
                 summary=data.summary,
@@ -126,7 +133,8 @@ class ContentService:
             existing.memo = data.memo
             existing.tags = data.tags
             existing.category = data.category
-            existing.processing_status = ProcessingStatus.RAW
+            existing.summary_status = SummaryStatus.PENDING
+            existing.embedding_status = EmbeddingStatus.PENDING
 
             content = await self.repository.update(existing)
             action = "updated"
@@ -136,7 +144,8 @@ class ContentService:
                 id=data.content_id,
                 user_id=data.user_id,
                 content_type=ContentType.YOUTUBE,
-                processing_status=ProcessingStatus.RAW,
+                summary_status=SummaryStatus.PENDING,
+                embedding_status=EmbeddingStatus.PENDING,
                 source_url=str(data.url),
                 title=data.title,
                 summary=data.summary,
@@ -211,7 +220,8 @@ class ContentService:
             existing.memo = data.memo
             existing.tags = data.tags
             existing.category = data.category
-            existing.processing_status = ProcessingStatus.RAW
+            existing.summary_status = SummaryStatus.PENDING
+            existing.embedding_status = EmbeddingStatus.PENDING
 
             content = await self.repository.update(existing)
             action = "updated"
@@ -221,7 +231,8 @@ class ContentService:
                 id=data.content_id,
                 user_id=data.user_id,
                 content_type=ContentType.PDF,
-                processing_status=ProcessingStatus.RAW,
+                summary_status=SummaryStatus.PENDING,
+                embedding_status=EmbeddingStatus.PENDING,
                 file_hash=file_hash,
                 title=data.title,
                 summary=data.summary,
@@ -297,7 +308,6 @@ class ContentService:
                 content_type=filters.content_type,
                 category=filters.category,
                 tags=filters.tags,
-                processing_status=filters.processing_status,
                 date_from=filters.date_from,
                 date_to=filters.date_to,
             )

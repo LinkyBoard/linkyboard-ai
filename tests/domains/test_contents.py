@@ -10,7 +10,11 @@ from app.domains.contents.exceptions import (
     FileSizeExceededException,
     InvalidContentTypeException,
 )
-from app.domains.contents.models import ContentType, ProcessingStatus
+from app.domains.contents.models import (
+    ContentType,
+    EmbeddingStatus,
+    SummaryStatus,
+)
 from app.domains.contents.schemas import (
     ContentDeleteRequest,
     ContentDeleteResponse,
@@ -217,12 +221,10 @@ class TestContentListRequestSchema:
             content_type=ContentType.WEBPAGE,
             category="tech",
             tags=["python", "fastapi"],
-            processing_status=ProcessingStatus.PROCESSED,
         )
         assert data.content_type == ContentType.WEBPAGE
         assert data.category == "tech"
         assert len(data.tags) == 2
-        assert data.processing_status == ProcessingStatus.PROCESSED
 
 
 class TestContentResponseSchema:
@@ -238,7 +240,8 @@ class TestContentResponseSchema:
             id=1,
             user_id=100,
             content_type=ContentType.WEBPAGE,
-            processing_status=ProcessingStatus.RAW,
+            summary_status=SummaryStatus.PENDING,
+            embedding_status=EmbeddingStatus.PENDING,
             source_url="https://example.com",
             title="Test",
             created_at=datetime.now(),
@@ -246,7 +249,8 @@ class TestContentResponseSchema:
         response = ContentResponse.model_validate(content)
         assert response.id == 1
         assert response.content_type == ContentType.WEBPAGE
-        assert response.processing_status == ProcessingStatus.RAW
+        assert response.summary_status == SummaryStatus.PENDING
+        assert response.embedding_status == EmbeddingStatus.PENDING
 
 
 class TestContentSyncResponseSchema:
