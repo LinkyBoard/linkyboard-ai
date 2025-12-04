@@ -123,6 +123,7 @@ async def client(db_session, minio_container: MinioContainer):
         test_s3_client.client.exceptions.BucketAlreadyOwnedByYou,
         test_s3_client.client.exceptions.BucketAlreadyExists,
     ):
+        # 버킷이 이미 존재하는 경우 무시하고 계속 진행
         pass
 
     # S3 클라이언트 의존성 오버라이드
@@ -192,6 +193,7 @@ def test_s3_client(minio_container: MinioContainer):
         client.client.exceptions.BucketAlreadyOwnedByYou,
         client.client.exceptions.BucketAlreadyExists,
     ):
+        # 버킷이 이미 존재하는 경우 무시하고 계속 진행
         pass
 
     yield client
