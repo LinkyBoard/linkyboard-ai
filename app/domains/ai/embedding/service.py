@@ -39,6 +39,8 @@ class EmbeddingService:
         Note:
             현재는 token 기반 분할만 지원합니다.
             나중에 sentence, paragraph 기반 분할을 추가할 수 있습니다.
+
+        TODO : 전략에 따른 분할 적용
         """
         if strategy.split_method != "token":
             logger.warning(
@@ -186,6 +188,53 @@ class EmbeddingService:
         )
 
         return embeddings
+
+    async def get_chunk_strategy(
+        self,
+        content_type: Optional[str] = None,
+        domain: Optional[str] = None,
+    ) -> Optional[ChunkStrategy]:
+        """청크 분할 전략 조회
+
+        우선순위:
+        1) content_type + domain
+        2) content_type + domain IS NULL (타입 기본값)
+        3) content_type IS NULL + domain IS NULL (글로벌 기본값)
+        """
+
+        base_query = select(ChunkStrategy).where(
+            ChunkStrategy.is_active.is_(True)
+        )
+
+        # 1. content_type가 있는 경우
+        if content_type is not None:
+            base_query = base_query.where(
+                ChunkStrategy.content_type == content_type
+            )
+
+            # 1-1. domain까지 있는 경우: 정확히 일치하는 전략 우선
+            if domain:
+                q_exact = base_query.where(ChunkStrategy.domain == domain)
+                result = await self.session.execute(q_exact)
+                strategy_exact: Optional[
+                    ChunkStrategy
+                ] = result.scalars().first()
+                if strategy_exact:
+                    return strategy_exact
+
+            # 1-2. 타입 기본값 (domain IS NULL) fallback
+            q_type_default = base_query.where(ChunkStrategy.domain.is_(None))
+            result = await self.session.execute(q_type_default)
+            strategy_default: Optional[
+                ChunkStrategy
+            ] = result.scalars().first()
+            if strategy_default:
+                return strategy_default
+
+            # 2. content_type이 없거나, 타입별 전략이 하나도 없으면
+            #    글로벌 기본 전략으로 fallback
+            return await self._get_default_strategy()
+        return await self._get_default_strategy()
 
     async def _get_default_strategy(self) -> ChunkStrategy:
         """기본 청크 전략 가져오기
