@@ -8,13 +8,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import verify_internal_api_key
-from app.core.schemas import APIResponse, create_response
+from app.core.schemas import (
+    APIResponse,
+    ListAPIResponse,
+    create_list_response,
+    create_response,
+)
 from app.domains.ai.schemas import (
     PDFSummarizeRequest,
+    SearchRequest,
+    SearchResultResponse,
     SummarizeResponse,
     WebpageSummarizeRequest,
     YoutubeSummarizeRequest,
 )
+from app.domains.ai.search.service import AISearchService
 from app.domains.ai.summarization.service import SummarizationService
 
 router = APIRouter()
@@ -27,11 +35,11 @@ def get_summarization_service(
     return SummarizationService(session)
 
 
-# def get_search_service(
-#     session: AsyncSession = Depends(get_db),
-# ) -> SearchService:
-#     """SearchService 의존성"""
-#     return SearchService(session)
+def get_search_service(
+    session: AsyncSession = Depends(get_db),
+) -> AISearchService:
+    """SearchService 의존성"""
+    return AISearchService(session)
 
 
 @router.post(
@@ -115,26 +123,33 @@ async def summarize_pdf(
     )
 
 
-# @router.post("/search",
-#             response_model=APIResponse[list[SearchResultResponse]],
-#             dependencies=[Depends(verify_internal_api_key)])
-# async def search_contents(
-#     request: SearchRequest,
-#     service: SearchService = Depends(get_search_service)
-# ):
-#     """콘텐츠 검색"""
-#     results, total = await service.search(
-#         query=request.query,
-#         user_id=request.user_id,
-#         mode=request.search_mode,
-#         filters=request.filters,
-#         page=request.page,
-#         size=request.size,
-#         threshold=request.threshold,
-#         include_chunks=request.include_chunks
-#     )
+@router.post(
+    "/search",
+    response_model=ListAPIResponse[SearchResultResponse],
+    dependencies=[Depends(verify_internal_api_key)],
+)
+async def search_contents(
+    request: SearchRequest,
+    service: AISearchService = Depends(get_search_service),
+):
+    """콘텐츠 검색"""
+    results, total = await service.search(
+        query=request.query,
+        user_id=request.user_id,
+        mode=request.search_mode,
+        filters=request.filters,
+        page=request.page,
+        size=request.size,
+        threshold=request.threshold,
+        include_chunks=request.include_chunks,
+    )
 
-#     return create_response(
-#         data=results,
-#         meta={"total": total, "page": request.page, "size": request.size}
-#     )
+    # dict → SearchResultResponse 변환
+    response_results = [SearchResultResponse(**r) for r in results]
+
+    return create_list_response(
+        data=response_results,
+        total=total,
+        page=request.page,
+        size=request.size,
+    )

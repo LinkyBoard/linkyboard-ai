@@ -14,6 +14,7 @@ from app.core.utils.datetime import now_utc
 from app.domains.ai.embedding.service import EmbeddingService
 from app.domains.ai.exceptions import SummarizationFailedException
 from app.domains.ai.models import SummaryCache
+from app.domains.ai.personalization.service import PersonalizationService
 from app.domains.ai.repository import AIRepository
 from app.domains.ai.schemas import SummarizeResponse
 from app.domains.ai.summarization import prompts
@@ -36,11 +37,16 @@ class SummarizationService:
         self,
         session: AsyncSession,
         embedding_service: Optional[EmbeddingService] = None,
+        personalization_service: Optional[PersonalizationService] = None,
     ):
         self.session = session
         self.repository = AIRepository(session)
         # embedding_service를 DI로 받되, 없으면 동일 세션으로 생성해서 재사용
         self.embedding_service = embedding_service or EmbeddingService(session)
+        # personalization_service를 DI로 받되, 없으면 동일 세션으로 생성해서 재사용
+        self.personalization_service = (
+            personalization_service or PersonalizationService(session)
+        )
 
     async def _get_cached_summary(
         self,
@@ -73,14 +79,29 @@ class SummarizationService:
         )
         candidate_categories = cached.candidate_categories or []
         candidate_tags = cached.candidate_tags or []
+
+        # 캐시 히트 시에도 개인화 적용
+        personalized_tags = (
+            await self.personalization_service.personalize_tags(
+                candidate_tags=candidate_tags,
+                user_id=user_id,
+                count=tag_count,
+            )
+        )
+
+        personalized_category = (
+            await self.personalization_service.personalize_category(
+                candidate_categories=candidate_categories,
+                user_id=user_id,
+            )
+        )
+
         return {
             "content_hash": cached.content_hash or cache_key,
             "extracted_text": cached.extracted_text or "",
             "summary": cached.summary or "",
-            "tags": candidate_tags[:tag_count],
-            "category": candidate_categories[0]
-            if candidate_categories
-            else "",
+            "tags": personalized_tags,
+            "category": personalized_category,
             "candidate_tags": candidate_tags,
             "candidate_categories": candidate_categories,
             "cached": True,
@@ -214,10 +235,11 @@ class SummarizationService:
             pass
         return [cleaned] if cleaned else []
 
-    def _build_summary_data(
+    async def _build_summary_data(
         self,
         extracted_text: str,
         pipeline_result: SummaryPipelineResult,
+        user_id: int,
         tag_count: int,
     ) -> tuple[dict, int]:
         """요약 데이터 구성
@@ -225,6 +247,7 @@ class SummarizationService:
         Args:
             extracted_text: 추출된 원본 텍스트
             pipeline_result: LLM 파이프라인 실행 결과
+            user_id: 사용자 ID (개인화용)
             tag_count: 반환할 태그 수
 
         Returns:
@@ -236,7 +259,22 @@ class SummarizationService:
             pipeline_result.category.content
         )
 
-        # TODO : 개인화 추천 로직 적용
+        # 개인화 추천 로직 적용
+        personalized_tags = (
+            await self.personalization_service.personalize_tags(
+                candidate_tags=candidate_tags,
+                user_id=user_id,
+                count=tag_count,
+            )
+        )
+
+        personalized_category = (
+            await self.personalization_service.personalize_category(
+                candidate_categories=candidate_categories,
+                user_id=user_id,
+            )
+        )
+
         # WTU 계산 (SummaryPipelineResult의 메서드 활용)
         total_wtu = pipeline_result.calculate_total_wtu()
 
@@ -245,10 +283,8 @@ class SummarizationService:
             "content_hash": content_hash,
             "extracted_text": extracted_text,
             "summary": summary_text,
-            "tags": candidate_tags[:tag_count],
-            "category": candidate_categories[0]
-            if candidate_categories
-            else "",
+            "tags": personalized_tags,
+            "category": personalized_category,
             "candidate_tags": candidate_tags,
             "candidate_categories": candidate_categories,
             "cached": False,
@@ -348,9 +384,10 @@ class SummarizationService:
                 return self._to_schema_dict(cached_summary)
 
         pipeline_result = await self._run_llm_pipeline(extracted_text)
-        summary_data, total_wtu = self._build_summary_data(
+        summary_data, total_wtu = await self._build_summary_data(
             extracted_text,
             pipeline_result,
+            user_id,
             tag_count,
         )
         await self._save_cache(
@@ -429,9 +466,10 @@ class SummarizationService:
                 "transcript": extracted_text,
             },
         )
-        summary_data, total_wtu = self._build_summary_data(
+        summary_data, total_wtu = await self._build_summary_data(
             extracted_text,
             pipeline_result,
+            user_id,
             tag_count,
         )
         await self._save_cache(
@@ -508,9 +546,10 @@ class SummarizationService:
             summary_prompt=prompts.PDF_SUMMARY_PROMPT,
             max_summary_tokens=500,
         )
-        summary_data, total_wtu = self._build_summary_data(
+        summary_data, total_wtu = await self._build_summary_data(
             extracted_text,
             pipeline_result,
+            user_id,
             tag_count,
         )
         await self._save_cache(
