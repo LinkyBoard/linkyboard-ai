@@ -6,6 +6,7 @@ from typing import Generator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from testcontainers.minio import MinioContainer
@@ -43,8 +44,8 @@ def user_id_factory():
 
 @pytest.fixture(scope="session")
 def postgres_container() -> Generator[PostgresContainer, None, None]:
-    """PostgreSQL 테스트 컨테이너"""
-    with PostgresContainer("postgres:16-alpine") as postgres:
+    """PostgreSQL 테스트 컨테이너 (pgvector 포함)"""
+    with PostgresContainer("pgvector/pgvector:pg16") as postgres:
         yield postgres
 
 
@@ -64,6 +65,8 @@ async def setup_test_database(test_database_url: str):
     """테스트 데이터베이스 테이블 생성"""
     engine = create_async_engine(test_database_url, echo=False)
     async with engine.begin() as conn:
+        # pgvector extension 활성화
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
     await engine.dispose()
 
