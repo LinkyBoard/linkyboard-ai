@@ -3,7 +3,7 @@
 AI 도메인 관련 API 엔드포인트입니다.
 """
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -15,11 +15,9 @@ from app.core.schemas import (
     create_response,
 )
 from app.domains.ai.schemas import (
-    PDFSummarizeRequest,
     SearchRequest,
     SearchResultResponse,
     SummarizeResponse,
-    WebpageSummarizeRequest,
     YoutubeSummarizeRequest,
 )
 from app.domains.ai.search.service import AISearchService
@@ -48,8 +46,11 @@ def get_search_service(
     dependencies=[Depends(verify_internal_api_key)],
 )
 async def summarize_webpage(
-    request: WebpageSummarizeRequest,
+    url: str = Form(...),
+    user_id: int = Form(...),
     html_file: UploadFile = File(...),
+    tag_count: int = Form(5),
+    refresh: bool = Form(False),
     summarization_service: SummarizationService = Depends(
         get_summarization_service
     ),
@@ -59,11 +60,11 @@ async def summarize_webpage(
     html_str = html_content.decode("utf-8")
 
     result = await summarization_service.summarize_webpage(
-        url=request.url,
+        url=url,
         html_content=html_str,
-        user_id=request.user_id,
-        tag_count=request.tag_count,
-        refresh=request.refresh,
+        user_id=user_id,
+        tag_count=tag_count,
+        refresh=refresh,
     )
 
     return create_response(
@@ -102,8 +103,10 @@ async def summarize_youtube(
     dependencies=[Depends(verify_internal_api_key)],
 )
 async def summarize_pdf(
-    request: PDFSummarizeRequest,
+    user_id: int = Form(...),
     pdf_file: UploadFile = File(...),
+    tag_count: int = Form(5),
+    refresh: bool = Form(False),
     summarization_service: SummarizationService = Depends(
         get_summarization_service
     ),
@@ -113,9 +116,9 @@ async def summarize_pdf(
 
     result = await summarization_service.summarize_pdf(
         pdf_content=pdf_content,
-        user_id=request.user_id,
-        tag_count=request.tag_count,
-        refresh=request.refresh,
+        user_id=user_id,
+        tag_count=tag_count,
+        refresh=refresh,
     )
 
     return create_response(

@@ -8,6 +8,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.llm import create_embedding
 from app.core.logging import get_logger
 from app.core.utils.datetime import now_utc
 from app.domains.ai.models import (
@@ -217,6 +218,13 @@ class PersonalizationRepository:
             return existing_tag
 
         # 새 태그 생성
+        if embedding_vector is None:
+            try:
+                embedding_vector = await create_embedding(tag_name)
+            except Exception:
+                # 임베딩 실패 시 None으로 저장 (나중에 재계산)
+                embedding_vector = None
+
         new_tag = Tag(
             tag_name=tag_name,
             embedding_vector=embedding_vector,
@@ -252,6 +260,12 @@ class PersonalizationRepository:
             return existing_category
 
         # 새 카테고리 생성
+        if embedding_vector is None:
+            try:
+                embedding_vector = await create_embedding(category_name)
+            except Exception:
+                embedding_vector = None
+
         new_category = Category(
             category_name=category_name,
             embedding_vector=embedding_vector,
@@ -304,6 +318,7 @@ class PersonalizationRepository:
         )
         result = await self.session.execute(query)
         usage = cast(UserTagUsage, result.scalar_one())
+        await self.session.refresh(usage)
 
         logger.debug(
             f"Updated user tag usage: user_id={user_id}, tag_id={tag_id}, "

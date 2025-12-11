@@ -5,6 +5,7 @@ import json
 from datetime import timedelta
 from typing import Optional
 
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.llm import LLMMessage, LLMTier, call_with_fallback
@@ -19,13 +20,7 @@ from app.domains.ai.repository import AIRepository
 from app.domains.ai.schemas import SummarizeResponse
 from app.domains.ai.summarization import prompts
 from app.domains.ai.summarization.types import SummaryPipelineResult
-from app.domains.ai.utils.parsers import (
-    calculate_content_hash,
-    extract_text_from_html,
-    extract_text_from_pdf,
-    extract_youtube_video_id,
-    get_youtube_transcript,
-)
+from app.domains.ai.utils import parsers
 
 logger = get_logger(__name__)
 
@@ -111,8 +106,8 @@ class SummarizationService:
         self,
         url: str,
     ) -> tuple[str, Optional[object]]:
-        youtube_id = extract_youtube_video_id(url)
-        youtube_transcript = get_youtube_transcript(youtube_id)
+        youtube_id = parsers.extract_youtube_video_id(url)
+        youtube_transcript = parsers.get_youtube_transcript(youtube_id)
         chunk_strategy = await self.embedding_service.get_chunk_strategy(
             content_type="youtube"
         )
@@ -122,7 +117,7 @@ class SummarizationService:
         self,
         html_content: str,
     ) -> tuple[str, Optional[object]]:
-        extracted_text = extract_text_from_html(html_content)
+        extracted_text = parsers.extract_text_from_html(html_content)
         chunk_strategy = await self.embedding_service.get_chunk_strategy(
             content_type="webpage"
         )
@@ -139,7 +134,7 @@ class SummarizationService:
         self,
         pdf_content: bytes,
     ) -> tuple[str, Optional[object]]:
-        extracted_text = extract_text_from_pdf(pdf_content)
+        extracted_text = parsers.extract_text_from_pdf(pdf_content)
         chunk_strategy = await self.embedding_service.get_chunk_strategy(
             content_type="pdf"
         )
@@ -278,7 +273,7 @@ class SummarizationService:
         # WTU 계산 (SummaryPipelineResult의 메서드 활용)
         total_wtu = pipeline_result.calculate_total_wtu()
 
-        content_hash = calculate_content_hash(extracted_text)
+        content_hash = parsers.calculate_content_hash(extracted_text)
         summary_data = {
             "content_hash": content_hash,
             "extracted_text": extracted_text,
@@ -298,6 +293,14 @@ class SummarizationService:
         total_tokens: int,
         cache_type: str = "webpage",
     ) -> None:
+        # 기존 동일 cache_key/type 캐시가 있으면 교체 (UPSERT 대용)
+        await self.session.execute(
+            delete(SummaryCache).where(
+                SummaryCache.cache_key == cache_key,
+                SummaryCache.cache_type == cache_type,
+            )
+        )
+
         summary_cache = SummaryCache(
             cache_key=cache_key,
             cache_type=cache_type,
@@ -355,10 +358,10 @@ class SummarizationService:
             - 관련 레퍼런스
                 https://github.com/Glitch-Jar/LLM-EYES
         """
-        cache_key = calculate_content_hash(url)
+        cache_key = parsers.calculate_content_hash(url)
 
         extracted_text, _ = await self._prepare_text_and_strategy(html_content)
-        current_content_hash = calculate_content_hash(extracted_text)
+        current_content_hash = parsers.calculate_content_hash(extracted_text)
 
         if refresh:
             logger.info(
@@ -431,10 +434,10 @@ class SummarizationService:
             }
         """
 
-        cache_key = calculate_content_hash(url)
+        cache_key = parsers.calculate_content_hash(url)
 
         extracted_text, _ = await self._prepare_transcript_and_strategy(url)
-        current_content_hash = calculate_content_hash(extracted_text)
+        current_content_hash = parsers.calculate_content_hash(extracted_text)
 
         if refresh:
             logger.info(
@@ -516,7 +519,7 @@ class SummarizationService:
                 "cached": bool
             }
         """
-        cache_key = calculate_content_hash(pdf_content)
+        cache_key = parsers.calculate_content_hash(pdf_content)
 
         if refresh:
             logger.info(
