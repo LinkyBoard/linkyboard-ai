@@ -292,7 +292,13 @@ def mock_llm_completion():
     # call_with_fallback이 노출되는 모든 경로를 Mock
     with patch("app.core.llm.fallback.call_with_fallback", mock), patch(
         "app.core.llm.call_with_fallback", mock
-    ), patch("app.domains.ai.summarization.service.call_with_fallback", mock):
+    ), patch(
+        "app.domains.ai.summarization.service.call_with_fallback", mock
+    ), patch(
+        "app.domains.topics.agents.summarizer.call_with_fallback", mock
+    ), patch(
+        "app.domains.topics.agents.writer.call_with_fallback", mock
+    ):
         yield mock
 
 
