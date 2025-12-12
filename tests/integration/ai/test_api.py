@@ -2,10 +2,10 @@
 # run_with_fallback에서 실제 API 호출 발생 방지
 
 # # """AI 도메인 API 통합 테스트 (Mock AI)"""
-# 
+#
 # # import pytest
-# 
-# 
+#
+#
 # # @pytest.mark.asyncio
 # # @pytest.mark.mock_ai
 # # async def test_summarize_webpage_api(
@@ -13,17 +13,17 @@
 # # ):
 # #     """웹페이지 요약 API 테스트 (Mock)"""
 # #     from io import BytesIO
-# 
+#
 # #     # Mock LLM 응답 설정
 # #     def mock_side_effect(*args, **kwargs):
 # #         from app.core.llm.types import LLMResult
-# 
+#
 # #         prompt = (
 # #             kwargs.get("messages", [])[0].content
 # #             if kwargs.get("messages")
 # #             else ""
 # #         )
-# 
+#
 # #         if "태그" in prompt or "키워드" in prompt:
 # #             return LLMResult(
 # #                 content='["AI", "기술", "트렌드", "혁신"]',
@@ -48,9 +48,9 @@
 # #                 output_tokens=50,
 # #                 finish_reason="stop",
 # #             )
-# 
+#
 # #     mock_llm_completion.side_effect = mock_side_effect
-# 
+#
 # #     # HTML 파일 준비
 # #     html_content = """
 # #     <html>
@@ -62,7 +62,7 @@
 # #     </html>
 # #     """
 # #     html_file = BytesIO(html_content.encode("utf-8"))
-# 
+#
 # #     # API 호출
 # #     response = await client.post(
 # #         "/api/v1/ai/summarize/webpage",
@@ -74,19 +74,19 @@
 # #         files={"html_file": ("test.html", html_file, "text/html")},
 # #         headers=api_key_header,
 # #     )
-# 
+#
 # #     # 응답 검증
 # #     assert response.status_code == 200
 # #     data = response.json()
-# 
+#
 # #     assert data["success"] is True
 # #     assert "summary" in data["data"]
 # #     assert "tags" in data["data"]
 # #     assert "category" in data["data"]
 # #     assert "cached" in data["data"]
 # #     assert isinstance(data["data"]["tags"], list)
-# 
-# 
+#
+#
 # # @pytest.mark.asyncio
 # # @pytest.mark.mock_ai
 # # async def test_summarize_youtube_api(
@@ -97,17 +97,17 @@
 # #     mock_youtube_transcript,
 # # ):
 # #     """YouTube 요약 API 테스트 (Mock)"""
-# 
+#
 # #     # Mock LLM 응답 설정
 # #     def mock_side_effect(*args, **kwargs):
 # #         from app.core.llm.types import LLMResult
-# 
+#
 # #         prompt = (
 # #             kwargs.get("messages", [])[0].content
 # #             if kwargs.get("messages")
 # #             else ""
 # #         )
-# 
+#
 # #         if "태그" in prompt or "키워드" in prompt:
 # #             return LLMResult(
 # #                 content='["YouTube", "영상", "콘텐츠"]',
@@ -132,9 +132,9 @@
 # #                 output_tokens=50,
 # #                 finish_reason="stop",
 # #             )
-# 
+#
 # #     mock_llm_completion.side_effect = mock_side_effect
-# 
+#
 # #     # API 호출
 # #     response = await client.post(
 # #         "/api/v1/ai/summarize/youtube",
@@ -146,17 +146,17 @@
 # #         },
 # #         headers=api_key_header,
 # #     )
-# 
+#
 # #     # 응답 검증
 # #     assert response.status_code == 200
 # #     data = response.json()
-# 
+#
 # #     assert data["success"] is True
 # #     assert "summary" in data["data"]
 # #     assert "tags" in data["data"]
 # #     assert "category" in data["data"]
-# 
-# 
+#
+#
 # # @pytest.mark.asyncio
 # # @pytest.mark.mock_ai
 # # async def test_summarize_pdf_api(
@@ -165,17 +165,17 @@
 # #     """PDF 요약 API 테스트 (Mock)"""
 # #     from io import BytesIO
 # #     from unittest.mock import patch
-# 
+#
 # #     # Mock LLM 응답 설정
 # #     def mock_side_effect(*args, **kwargs):
 # #         from app.core.llm.types import LLMResult
-# 
+#
 # #         prompt = (
 # #             kwargs.get("messages", [])[0].content
 # #             if kwargs.get("messages")
 # #             else ""
 # #         )
-# 
+#
 # #         if "태그" in prompt or "키워드" in prompt:
 # #             return LLMResult(
 # #                 content='["PDF", "문서", "연구"]',
@@ -200,13 +200,13 @@
 # #                 output_tokens=50,
 # #                 finish_reason="stop",
 # #             )
-# 
+#
 # #     mock_llm_completion.side_effect = mock_side_effect
-# 
+#
 # #     # PDF 파일 준비 (Mock)
 # #     pdf_content = b"%PDF-1.4\nMock PDF content"
 # #     pdf_file = BytesIO(pdf_content)
-# 
+#
 # #     # PDF 파서 Mock
 # #     with patch(
 # #         "app.domains.ai.utils.parsers.extract_text_from_pdf"
@@ -214,7 +214,7 @@
 # #         mock_pdf_parser.return_value = (
 # #             "Extracted PDF text content for testing"
 # #         )
-# 
+#
 # #         # API 호출
 # #         response = await client.post(
 # #             "/api/v1/ai/summarize/pdf",
@@ -222,17 +222,17 @@
 # #             files={"pdf_file": ("test.pdf", pdf_file, "application/pdf")},
 # #             headers=api_key_header,
 # #         )
-# 
+#
 # #         # 응답 검증
 # #         assert response.status_code == 200
 # #         data = response.json()
-# 
+#
 # #         assert data["success"] is True
 # #         assert "summary" in data["data"]
 # #         assert "tags" in data["data"]
 # #         assert "category" in data["data"]
-# 
-# 
+#
+#
 # # @pytest.mark.asyncio
 # # @pytest.mark.mock_ai
 # # async def test_search_api_vector_mode(
@@ -242,7 +242,7 @@
 # #     from app.core.utils.datetime import now_utc
 # #     from app.domains.ai.models import ContentEmbeddingMetadata
 # #     from app.domains.contents.models import Content
-# 
+#
 # #     # 테스트 데이터 생성
 # #     async with client.app.dependency_overrides.get(
 # #         __import__("app.core.database", fromlist=["get_db"]).get_db
@@ -259,7 +259,7 @@
 # #         )
 # #         db_session.add(content)
 # #         await db_session.flush()
-# 
+#
 # #         embedding = ContentEmbeddingMetadata(
 # #             content_id=content.id,
 # #             chunk_index=0,
@@ -270,7 +270,7 @@
 # #         )
 # #         db_session.add(embedding)
 # #         await db_session.commit()
-# 
+#
 # #     # API 호출
 # #     response = await client.post(
 # #         "/api/v1/ai/search",
@@ -284,23 +284,23 @@
 # #         },
 # #         headers=api_key_header,
 # #     )
-# 
+#
 # #     # 응답 검증
 # #     assert response.status_code == 200
 # #     data = response.json()
-# 
+#
 # #     assert data["success"] is True
 # #     assert isinstance(data["data"], list)
 # #     assert "total" in data["meta"]
-# 
-# 
+#
+#
 # # @pytest.mark.asyncio
 # # @pytest.mark.mock_ai
 # # async def test_search_api_keyword_mode(client, api_key_header):
 # #     """검색 API 테스트 - 키워드 모드 (Mock)"""
 # #     from app.core.utils.datetime import now_utc
 # #     from app.domains.contents.models import Content
-# 
+#
 # #     # 테스트 데이터 생성
 # #     async with client.app.dependency_overrides.get(
 # #         __import__("app.core.database", fromlist=["get_db"]).get_db
@@ -316,7 +316,7 @@
 # #         )
 # #         db_session.add(content)
 # #         await db_session.commit()
-# 
+#
 # #     # API 호출
 # #     response = await client.post(
 # #         "/api/v1/ai/search",
@@ -329,15 +329,15 @@
 # #         },
 # #         headers=api_key_header,
 # #     )
-# 
+#
 # #     # 응답 검증
 # #     assert response.status_code == 200
 # #     data = response.json()
-# 
+#
 # #     assert data["success"] is True
 # #     assert isinstance(data["data"], list)
-# 
-# 
+#
+#
 # # @pytest.mark.asyncio
 # # @pytest.mark.mock_ai
 # # async def test_search_api_hybrid_mode(
@@ -347,7 +347,7 @@
 # #     from app.core.utils.datetime import now_utc
 # #     from app.domains.ai.models import ContentEmbeddingMetadata
 # #     from app.domains.contents.models import Content
-# 
+#
 # #     # 테스트 데이터 생성
 # #     async with client.app.dependency_overrides.get(
 # #         __import__("app.core.database", fromlist=["get_db"]).get_db
@@ -364,7 +364,7 @@
 # #         )
 # #         db_session.add(content)
 # #         await db_session.flush()
-# 
+#
 # #         embedding = ContentEmbeddingMetadata(
 # #             content_id=content.id,
 # #             chunk_index=0,
@@ -375,7 +375,7 @@
 # #         )
 # #         db_session.add(embedding)
 # #         await db_session.commit()
-# 
+#
 # #     # API 호출
 # #     response = await client.post(
 # #         "/api/v1/ai/search",
@@ -389,15 +389,15 @@
 # #         },
 # #         headers=api_key_header,
 # #     )
-# 
+#
 # #     # 응답 검증
 # #     assert response.status_code == 200
 # #     data = response.json()
-# 
+#
 # #     assert data["success"] is True
 # #     assert isinstance(data["data"], list)
-# 
-# 
+#
+#
 # # @pytest.mark.asyncio
 # # @pytest.mark.mock_ai
 # # async def test_api_authentication_required(client):
@@ -411,11 +411,11 @@
 # #             "tag_count": 5,
 # #         },
 # #     )
-# 
+#
 # #     # 401 Unauthorized
 # #     assert response.status_code == 401
-# 
-# 
+#
+#
 # # @pytest.mark.asyncio
 # # @pytest.mark.mock_ai
 # # async def test_summarize_cache_behavior(
@@ -423,11 +423,11 @@
 # # ):
 # #     """요약 캐시 동작 테스트"""
 # #     from io import BytesIO
-# 
+#
 # #     # Mock LLM 응답 설정
 # #     def mock_side_effect(*args, **kwargs):
 # #         from app.core.llm.types import LLMResult
-# 
+#
 # #         return LLMResult(
 # #             content="캐시 테스트 요약",
 # #             model="mock-model",
@@ -435,12 +435,12 @@
 # #             output_tokens=50,
 # #             finish_reason="stop",
 # #         )
-# 
+#
 # #     mock_llm_completion.side_effect = mock_side_effect
-# 
+#
 # #     html_content = "<html><body>Test content</body></html>"
 # #     html_file = BytesIO(html_content.encode("utf-8"))
-# 
+#
 # #     # 첫 번째 요청 (캐시 미스)
 # #     response1 = await client.post(
 # #         "/api/v1/ai/summarize/webpage",
@@ -452,11 +452,11 @@
 # #         files={"html_file": ("test.html", html_file, "text/html")},
 # #         headers=api_key_header,
 # #     )
-# 
+#
 # #     assert response1.status_code == 200
 # #     data1 = response1.json()
 # #     assert data1["data"]["cached"] is False
-# 
+#
 # #     # 두 번째 요청 (캐시 히트)
 # #     html_file.seek(0)  # 파일 포인터 초기화
 # #     response2 = await client.post(
@@ -469,7 +469,7 @@
 # #         files={"html_file": ("test.html", html_file, "text/html")},
 # #         headers=api_key_header,
 # #     )
-# 
+#
 # #     assert response2.status_code == 200
 # #     data2 = response2.json()
 # #     assert data2["data"]["cached"] is True
