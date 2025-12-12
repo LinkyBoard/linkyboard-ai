@@ -227,6 +227,7 @@ class SummarizationService:
             if isinstance(parsed, list):
                 return [str(x) for x in parsed]
         except json.JSONDecodeError:
+            # Fallback: 파싱 실패 시 원본 문자열 사용
             pass
         return [cleaned] if cleaned else []
 
