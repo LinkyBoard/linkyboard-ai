@@ -73,10 +73,10 @@ users (
     deleted_at   TIMESTAMP WITH TIME ZONE,  -- Soft Delete용 (NULL이면 활성)
     last_sync_at TIMESTAMP WITH TIME ZONE
 );
-
--- Soft Delete 쿼리 최적화를 위한 부분 인덱스
-CREATE INDEX idx_users_active ON users (id) WHERE deleted_at IS NULL;
 ```
+
+> **Note**: `id` 컬럼은 Primary Key이므로 이미 암묵적인 고유 인덱스가 존재합니다.
+> Soft Delete 필터링은 PK 조회 시 자동으로 최적화되므로 별도의 부분 인덱스가 필요하지 않습니다.
 
 ### 3.2 모델 구현 지시사항
 

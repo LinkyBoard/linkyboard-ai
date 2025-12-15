@@ -22,6 +22,18 @@ class ErrorCode(str, Enum):
     TOKEN_EXPIRED = "TOKEN_EXPIRED"
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
 
+    # LLM 관련
+    LLM_PROVIDER_ERROR = "LLM_PROVIDER_ERROR"
+    ALL_PROVIDERS_FAILED = "ALL_PROVIDERS_FAILED"
+    INVALID_MODEL_TIER = "INVALID_MODEL_TIER"
+
+    # Storage 관련
+    STORAGE_ERROR = "STORAGE_ERROR"
+    FILE_TOO_LARGE = "FILE_TOO_LARGE"
+    INVALID_FILE_TYPE = "INVALID_FILE_TYPE"
+    S3_UPLOAD_FAILED = "S3_UPLOAD_FAILED"
+    S3_DOWNLOAD_FAILED = "S3_DOWNLOAD_FAILED"
+
 
 class BaseAPIException(HTTPException):
     """기본 API 예외 클래스"""
@@ -137,6 +149,22 @@ class InternalServerException(BaseAPIException):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             error_code=error_code,
             message=message,
+            detail=detail,
+        )
+
+
+class StorageException(InternalServerException):
+    """Storage 관련 예외"""
+
+    def __init__(
+        self,
+        message: str = "파일 저장소 오류가 발생했습니다.",
+        error_code: str = ErrorCode.STORAGE_ERROR,
+        detail: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            message=message,
+            error_code=error_code,
             detail=detail,
         )
 

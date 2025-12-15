@@ -9,8 +9,9 @@ LinkyBoard를 위한 AI 기반 백엔드 서비스입니다. FastAPI와 도메�
 ### 환경 설정
 
 ```bash
-# 의존성 설치
-make install
+# 의존성 설치 및 환경 설정
+# pre-commit 훅 설치
+make setup
 
 # 환경 변수 설정
 cp .env.example .env
@@ -78,15 +79,11 @@ make docker-up
 ### 로컬 개발 환경 설정
 
 ```bash
-# Poetry 의존성 설치
-make install
+# 의존성 설치 및 환경 설정
+make setup
 
 # 환경 변수 설정
 cp .env.example .env
-
-# pre-commit 훅 설치
-poetry run pre-commit install
-poetry run pre-commit install --hook-type pre-push
 
 # 데이터베이스 마이그레이션
 make migrate
@@ -171,4 +168,4 @@ app/domains/
 
 MIT License
 
-Copyright (c) 2024 Wonjun Choi
+Copyright (c) 2025 Wonjun Choi

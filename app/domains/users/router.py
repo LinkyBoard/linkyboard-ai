@@ -1,16 +1,13 @@
 """Users 도메인 라우터
 
-Note:
-    이 모듈은 템플릿 예제입니다.
-    실제 프로젝트에서는 도메인에 맞게 수정하세요.
+Spring Boot 사용자 동기화 API 엔드포인트입니다.
 """
-
-from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.dependencies import verify_internal_api_key
 from app.core.schemas import (
     APIResponse,
     ListAPIResponse,
@@ -18,7 +15,12 @@ from app.core.schemas import (
     create_response,
 )
 from app.core.utils.pagination import PageParams
-from app.domains.users.schemas import UserCreate, UserResponse, UserUpdate
+from app.domains.users.schemas import (
+    BulkSyncResponse,
+    UserBulkSync,
+    UserResponse,
+    UserSync,
+)
 from app.domains.users.service import UserService
 
 router = APIRouter()
@@ -29,17 +31,21 @@ def get_user_service(session: AsyncSession = Depends(get_db)) -> UserService:
     return UserService(session)
 
 
-@router.get("", response_model=ListAPIResponse[UserResponse])
+@router.get(
+    "",
+    response_model=ListAPIResponse[UserResponse],
+    dependencies=[Depends(verify_internal_api_key)],
+)
 async def get_users(
     page_params: PageParams = Depends(),
-    is_active: Optional[bool] = None,
+    include_deleted: bool = False,
     service: UserService = Depends(get_user_service),
 ):
     """사용자 목록 조회"""
     users, total = await service.get_users(
         page=page_params.page,
         size=page_params.size,
-        is_active=is_active,
+        include_deleted=include_deleted,
     )
     return create_list_response(
         data=[UserResponse.model_validate(user) for user in users],
@@ -50,7 +56,11 @@ async def get_users(
     )
 
 
-@router.get("/{user_id}", response_model=APIResponse[UserResponse])
+@router.get(
+    "/{user_id}",
+    response_model=APIResponse[UserResponse],
+    dependencies=[Depends(verify_internal_api_key)],
+)
 async def get_user(
     user_id: int,
     service: UserService = Depends(get_user_service),
@@ -63,38 +73,51 @@ async def get_user(
     )
 
 
-@router.post("", response_model=APIResponse[UserResponse], status_code=201)
-async def create_user(
-    user_data: UserCreate,
+@router.post(
+    "",
+    response_model=APIResponse[UserResponse],
+    status_code=201,
+    dependencies=[Depends(verify_internal_api_key)],
+)
+async def upsert_user(
+    user_data: UserSync,
     service: UserService = Depends(get_user_service),
 ):
-    """사용자 생성"""
-    user = await service.create_user(user_data)
+    """사용자 동기화 (Upsert)"""
+    user = await service.upsert_user(user_data)
     return create_response(
         data=UserResponse.model_validate(user),
-        message="사용자가 생성되었습니다.",
+        message="사용자가 동기화되었습니다.",
     )
 
 
-@router.patch("/{user_id}", response_model=APIResponse[UserResponse])
-async def update_user(
-    user_id: int,
-    user_data: UserUpdate,
+@router.post(
+    "/bulk",
+    response_model=APIResponse[BulkSyncResponse],
+    status_code=201,
+    dependencies=[Depends(verify_internal_api_key)],
+)
+async def bulk_sync_users(
+    bulk_data: UserBulkSync,
     service: UserService = Depends(get_user_service),
 ):
-    """사용자 수정"""
-    user = await service.update_user(user_id, user_data)
+    """벌크 사용자 동기화"""
+    result = await service.bulk_upsert_users(bulk_data.users)
     return create_response(
-        data=UserResponse.model_validate(user),
-        message="사용자 정보가 수정되었습니다.",
+        data=result,
+        message="벌크 사용자 동기화가 완료되었습니다.",
     )
 
 
-@router.delete("/{user_id}", status_code=204)
+@router.delete(
+    "/{user_id}",
+    status_code=204,
+    dependencies=[Depends(verify_internal_api_key)],
+)
 async def delete_user(
     user_id: int,
     service: UserService = Depends(get_user_service),
 ):
-    """사용자 삭제"""
+    """사용자 삭제 (Soft Delete)"""
     await service.delete_user(user_id)
     return None

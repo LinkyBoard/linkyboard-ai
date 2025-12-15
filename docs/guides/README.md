@@ -17,6 +17,7 @@
 | 07 | [Docker 및 배포](./07-deployment.md) | Docker 설정, 환경 변수, 배포 가이드 |
 | 08 | [신규 도메인 추가 가이드](./08-new-domain-guide.md) | 새 도메인 추가 단계별 가이드 |
 | 09 | [커밋 메시지 규칙](./09-commit-message.md) | Conventional Commits, 메시지 형식, Git Hooks |
+| 10 | [브랜치 네이밍 규칙](./10-branch-naming.md) | Git Flow, 브랜치 타입, 워크플로우 |
 
 ### 빠른 시작
 

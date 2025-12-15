@@ -711,6 +711,10 @@ tests:
 | CriticAgent | 결과 검토/개선 에이전트 |
 | 캐싱 | 동일 요청 결과 캐싱 |
 | Rate Limiting | AI 서버 레벨 요청 제한 |
+| **추론 모델 (Reasoning)** | o1-mini, o3-mini 등 복잡한 추론이 필요한 작업에 활용 |
+| **CoT (Chain of Thought)** | 다중 출처 종합, 논리적 구조화 시 단계별 추론 적용 |
+
+> **Note**: 추론 모델/CoT는 다중 출처 종합, 모순 해결, 논리적 구조화 등 "생각이 필요한 작업"에 유용할 수 있음. Phase 2에서 reasoning 티어 추가 및 적용 시나리오 검토 예정.
 
 ### 13.2 LangGraph 도입 기준
 
