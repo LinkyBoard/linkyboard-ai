@@ -20,6 +20,14 @@ pipeline {
         HARBOR_REPO = 'linkyboard/linkyboard-ai'
     }
 
+    stage('Debug Harbor URL') {
+        steps {
+            withCredentials([string(credentialsId: 'harbor-url', variable: 'HARBOR_URL')]) {
+                sh 'echo "HARBOR_URL=$HARBOR_URL"'
+            }
+        }
+    }
+
     stages {
         stage('Checkout') {
             steps {
