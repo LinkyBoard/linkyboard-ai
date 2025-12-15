@@ -15,17 +15,8 @@ pipeline {
     }
 
     environment {
-        // Harbor 프로젝트/레포 경로만 맞게 수정하세요. (예: linkyboard/ai)
-        // 최종 이미지: <harbor-url>/<HARBOR_REPO>:<TAG>
         HARBOR_REPO = 'linkyboard/linkyboard-ai'
-    }
-
-    stage('Debug Harbor URL') {
-        steps {
-            withCredentials([string(credentialsId: 'harbor-url', variable: 'HARBOR_URL')]) {
-                sh 'echo "HARBOR_URL=$HARBOR_URL"'
-            }
-        }
+        LOCAL_IMAGE = 'linkyboard-ai'
     }
 
     stages {
@@ -47,6 +38,39 @@ pipeline {
             }
         }
 
+        stage('Diagnose Harbor URL Shape') {
+            steps {
+                withCredentials([string(credentialsId: 'harbor-ip', variable: 'HARBOR_URL')]) {
+                    sh '''
+                        set -e
+
+                        if echo "$HARBOR_URL" | grep -Eq '^(http|https)://'; then
+                          echo "HAS_SCHEME=yes (잘못된 값: http(s):// 제거 필요)"
+                        else
+                          echo "HAS_SCHEME=no"
+                        fi
+
+                        if echo "$HARBOR_URL" | grep -Eq '/.+'; then
+                          echo "HAS_PATH=yes (잘못된 값: 경로 제거 필요)"
+                        else
+                          echo "HAS_PATH=no"
+                        fi
+
+                        if echo "$HARBOR_URL" | grep -Eq ':[0-9]+$'; then
+                          echo "HAS_PORT=yes"
+                        else
+                          echo "HAS_PORT=no"
+                        fi
+
+                        if echo "$HARBOR_URL" | grep -Eq '^(http|https)://|/.+'; then
+                          echo "HARBOR_URL 형식이 Docker login에 부적합합니다. IP[:PORT] 형태여야 합니다."
+                          exit 1
+                        fi
+                    '''
+                }
+            }
+        }
+
         stage('Docker Availability') {
             steps {
                 sh 'docker version'
@@ -61,8 +85,7 @@ pipeline {
                     echo "COMMIT=$COMMIT"
                     echo "TAG=${TAG}"
 
-                    # 로컬 태그로 먼저 빌드
-                    docker build -t linkyboard-ai:${TAG} -t linkyboard-ai:sha-${COMMIT} .
+                    docker build -t ${LOCAL_IMAGE}:${TAG} -t ${LOCAL_IMAGE}:sha-${COMMIT} .
                 '''
             }
         }
@@ -70,22 +93,25 @@ pipeline {
         stage('Push to Harbor') {
             steps {
                 withCredentials([
-                    usernamePassword(credentialsId: 'harbor-cred', usernameVariable: 'H_USER', passwordVariable: 'H_PASS'),
-                    string(credentialsId: 'harbor-url', variable: 'HARBOR_URL')
+                    usernamePassword(
+                        credentialsId: 'harbor-jenkins-bot',
+                        usernameVariable: 'H_USER',
+                        passwordVariable: 'H_PASS'
+                    ),
+                    string(credentialsId: 'harbor-ip', variable: 'HARBOR_URL')
                 ]) {
                     sh '''
                         set -e
                         COMMIT=$(git rev-parse --short HEAD)
 
                         IMAGE="${HARBOR_URL}/${HARBOR_REPO}"
+                        echo "Target image repository = ${IMAGE}"
 
-                        echo "$H_PASS" | docker login "$HARBOR_URL" -u "$H_USER" --password-stdin
+                        echo "$H_PASS" | docker login "$HARBOR_URL" --username "$H_USER" --password-stdin
 
-                        # Harbor 태그로 다시 태깅
-                        docker tag linkyboard-ai:${TAG} ${IMAGE}:${TAG}
-                        docker tag linkyboard-ai:sha-${COMMIT} ${IMAGE}:sha-${COMMIT}
+                        docker tag ${LOCAL_IMAGE}:${TAG} ${IMAGE}:${TAG}
+                        docker tag ${LOCAL_IMAGE}:sha-${COMMIT} ${IMAGE}:sha-${COMMIT}
 
-                        # Push
                         docker push ${IMAGE}:${TAG}
                         docker push ${IMAGE}:sha-${COMMIT}
 
@@ -97,10 +123,10 @@ pipeline {
 
         stage('Build Placeholder') {
             steps {
-                echo "Jenkinsfile 정상 실행 확인"
+                echo "Jenkinsfile 실행 완료"
                 echo "배포 태그: ${params.TAG}"
                 echo "RUN_SMOKE: ${params.RUN_SMOKE}"
-                echo "Harbor push 완료(성공 시)"
+                echo "Harbor push 완료"
             }
         }
     }
