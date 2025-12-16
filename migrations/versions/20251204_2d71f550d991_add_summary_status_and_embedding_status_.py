@@ -24,6 +24,7 @@ def upgrade() -> None:
         op.f("idx_users_active"),
         table_name="users",
         postgresql_where="(deleted_at IS NULL)",
+        if_exists=True,
     )
     # ### end Alembic commands ###
 
