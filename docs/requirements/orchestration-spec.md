@@ -9,7 +9,8 @@ AI 오케스트레이션은 사용자 요청을 분석하여 여러 AI 에이전
 
 | Phase | 범위 |
 |-------|------|
-| **Phase 1** | Topics 도메인 전용 (`ask`, `draft`) |
+| **Phase 1.0 (현재)** | Topics 도메인 `draft` 오케스트레이션 우선 개발 (고정 파이프라인) |
+| **Phase 1.5 (예정)** | `ask` 동적 오케스트레이션 출시 (Planner 기반) |
 | **Phase 2+** | AI 도메인 통합 검토 (복잡한 요청 시 오케스트레이터 사용) |
 
 ### 1.2 도메인 관계
@@ -45,6 +46,7 @@ AI 오케스트레이션은 사용자 요청을 분석하여 여러 AI 에이전
 |----------|------|----------|------|
 | **PlannerAgent** | 요청 분석, 실행 계획 수립 | Claude 4.5 Haiku | light |
 | **SummarizerAgent** | 콘텐츠 요약 | Claude 4.5 Haiku | light |
+| **ContentRagAgent** | 사용자 저장 콘텐츠 RAG 검색 | text-embedding-3-large | embedding |
 | **AnalyzerAgent** | 비교/분석/패턴 추출 | GPT-5 mini | standard |
 | **ResearcherAgent** | 웹 검색 + 콘텐츠 변환 | pplx-70b-online | search |
 | **WriterAgent** | 글 작성/초안 생성 | GPT-5 mini | standard |
@@ -62,6 +64,13 @@ class SummarizerAgent:
     """긴 콘텐츠를 핵심 내용으로 압축"""
     # - 선택된 콘텐츠 요약
     # - 토큰 수 최적화
+
+class ContentRagAgent:
+    """사용자 저장 콘텐츠 RAG 검색"""
+    # - 벡터 검색(UserContentRagTool)으로 top-k 컨텍스트 수집
+    # - 동일 사용자/보드/태그 필터 적용
+    # - 필요 시 쿼리 리라이팅(LLM) 후 재검색
+    # - 검색 결과/점수를 downstream 에이전트에 전달
 
 class AnalyzerAgent:
     """콘텐츠 간 관계 분석"""
@@ -87,40 +96,45 @@ class WriterAgent:
 
 ### 3.1 API별 실행 방식
 
-| API | 실행 방식 | 설명 |
-|-----|----------|------|
-| **ask** | 동적 (Planner 기반) | Planner가 필요한 에이전트 선택 |
-| **draft** | 고정 파이프라인 | Summarizer → (Researcher) → Writer |
+| API | 실행 방식 | 설명 | 상태 |
+|-----|----------|------|------|
+| **draft** | 고정 파이프라인 | Summarizer → (Researcher) → Writer | Phase 1.0 우선 개발 |
+| **ask** | 동적 (Planner 기반) | Planner가 필요한 에이전트 선택 (예: Summarizer + ContentRag + Researcher) | Phase 1.5 후속 |
 
 ### 3.2 병렬 실행
 
 의존성이 없는 에이전트는 병렬 실행합니다.
 
 ```
-ask 요청: "선택한 콘텐츠 + 최신 트렌드로 분석해줘"
+draft 요청 (Phase 1.0): "이 콘텐츠로 블로그 글 초안 작성해줘"
 
-Stage 1 (병렬):
-├── SummarizerAgent: 콘텐츠 요약
-└── ResearcherAgent: 웹 검색
+Stage 1 (순차):
+└── SummarizerAgent: 선택 콘텐츠 요약
 
-Stage 2 (순차):
-└── AnalyzerAgent: 요약 + 검색 결과 분석
+Stage 2 (옵션):
+└── ResearcherAgent: 필요 시 추가 검색
 
 Stage 3 (순차):
-└── WriterAgent: 최종 응답 작성
+└── WriterAgent: 초안 작성
 ```
 
+> ask는 Phase 1.5 후속 개발 대상이며, 병렬 실행/Planner 기반 예시는 아래 3.3에서 참고합니다.
+
 ### 3.3 실행 계획 예시
+
+> 아래 계획 예시는 ask(Phase 1.5) 동적 오케스트레이션 기준입니다. draft(Phase 1.0)는 Summarizer → (Researcher) → Writer 순차 실행으로 Planner 계획 복잡도가 낮습니다.
 
 ```json
 {
   "plan_id": "plan_abc123",
+  "retrieval_mode": "both",
   "stages": [
     {
       "stage": 1,
       "parallel": true,
       "agents": [
         {"agent": "summarizer", "reason": "3개 콘텐츠 요약 필요"},
+        {"agent": "content_rag", "reason": "저장 콘텐츠 기반 컨텍스트 확보"},
         {"agent": "researcher", "reason": "최신 트렌드 검색 요청"}
       ]
     },
@@ -141,6 +155,19 @@ Stage 3 (순차):
   ]
 }
 ```
+
+### 3.4 콘텐츠 소스 선택 옵션 (`retrieval_mode`)
+
+사용자 입력으로 RAG/웹 검색 사용 여부를 제어할 수 있으며, 기본은 `auto`입니다.
+
+| 값 | 의미 | 동작 |
+|----|------|------|
+| `auto` (기본) | Planner가 자동 결정 | 요청/컨텍스트에 따라 ContentRagAgent, ResearcherAgent, 또는 둘 다 선택 |
+| `rag_only` | 저장 콘텐츠만 사용 | Stage 1에 ContentRagAgent만 배치, 웹 검색 스킵(실패 시 경고 후 진행) |
+| `web_only` | 웹 검색만 사용 | Stage 1에 ResearcherAgent만 배치, RAG 스킵 |
+| `both` | 두 채널 강제 병렬 | Stage 1에 ContentRagAgent + ResearcherAgent 병렬 실행 |
+
+> Planner는 `auto`에서 검색 실패 시 남은 채널로 진행하며, 실패/스킵 내역을 SSE 경고 및 최종 응답 경고로 전달합니다.
 
 ---
 
@@ -233,8 +260,10 @@ data: {"usage": {...}}
 ```
 event: plan
 data: {
+  "retrieval_mode": "both",
   "stages": [
     {"agent": "summarizer", "reason": "3개 콘텐츠 요약"},
+    {"agent": "content_rag", "reason": "저장 콘텐츠 기반 컨텍스트 확보"},
     {"agent": "researcher", "reason": "최신 트렌드 검색"},
     {"agent": "analyzer", "reason": "비교 분석"},
     {"agent": "writer", "reason": "블로그 형식 작성"}
@@ -245,7 +274,19 @@ event: agent_start
 data: {"agent": "summarizer", "message": "콘텐츠를 요약하고 있어요..."}
 
 event: agent_start
+data: {"agent": "content_rag", "message": "저장된 콘텐츠를 검색하고 있어요..."}
+
+event: agent_start
 data: {"agent": "researcher", "message": "관련 자료를 검색하고 있어요..."}
+
+event: retrieval_result
+data: {
+  "agent": "content_rag",
+  "results": [
+    {"content_id": 123, "title": "AI 트렌드", "score": 0.62, "tags": ["ai","trends"]},
+    {"content_id": 124, "title": "생성형 사례", "score": 0.58, "tags": ["genai"]}
+  ]
+}
 
 event: agent_done
 data: {"agent": "researcher", "result_preview": "3개 결과 발견"}
@@ -269,7 +310,7 @@ event: chunk
 data: {"content": "선택된 콘텐츠들은..."}
 
 event: done
-data: {"usage": {...}, "agents_used": ["summarizer", "researcher", "analyzer", "writer"]}
+data: {"usage": {...}, "agents_used": ["summarizer", "content_rag", "researcher", "analyzer", "writer"]}
 ```
 
 ### 5.4 이벤트 타입
@@ -282,6 +323,7 @@ data: {"usage": {...}, "agents_used": ["summarizer", "researcher", "analyzer", "
 | `agent_chunk` | 에이전트 중간 출력 (verbose) |
 | `agent_done` | 에이전트 완료 (verbose) |
 | `search_result` | 검색 결과 (verbose) |
+| `retrieval_result` | 저장 콘텐츠 RAG 검색 결과 (verbose) |
 | `chunk` | 최종 출력 텍스트 조각 |
 | `done` | 완료 |
 | `error` | 에러 |
@@ -445,6 +487,7 @@ app/domains/topics/
 │   ├── __init__.py
 │   ├── base.py              # BaseAgent 인터페이스
 │   ├── summarizer.py
+│   ├── content_rag.py
 │   ├── analyzer.py
 │   ├── researcher.py
 │   └── writer.py
@@ -732,3 +775,6 @@ tests:
 |------|------|----------|
 | 1.0 | 2025-12-03 | 초기 작성 |
 | 1.1 | 2025-12-03 | RAG 평가 섹션 추가 (LangFuse + Ragas) |
+| 1.2 | 2025-12-04 | ContentRagAgent 추가, RAG 전용 SSE 이벤트(retrieval_result) 분리 |
+| 1.3 | 2025-12-04 | retrieval_mode 옵션 추가(사용자 입력 기반 RAG/웹 검색 제어) |
+| 1.4 | 2025-12-04 | draft 우선 개발(Phase 1.0), ask 후속(Phase 1.5)로 범위/테이블 정리 |

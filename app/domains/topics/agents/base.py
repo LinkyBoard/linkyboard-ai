@@ -4,32 +4,14 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Any
-
-from pydantic import BaseModel
 
 from app.core.llm import LLMMessage, LLMTier
-
-
-class AgentContext(BaseModel):
-    """에이전트 실행 컨텍스트"""
-
-    request_id: str
-    user_id: int
-    prompt: str
-    additional_data: dict[str, Any] = {}
-
-
-class AgentResult(BaseModel):
-    """에이전트 실행 결과"""
-
-    agent_name: str
-    success: bool
-    content: str
-    model_used: str
-    input_tokens: int
-    output_tokens: int
-    error: str | None = None
+from app.core.llm.types import AllProvidersFailedError
+from app.domains.topics.orchestration.models import (
+    AgentContext,
+    AgentExecutionStatus,
+    AgentResult,
+)
 
 
 class BaseAgent(ABC):
@@ -42,14 +24,48 @@ class BaseAgent(ABC):
     @abstractmethod
     def name(self) -> str:
         """에이전트 이름"""
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def build_messages(self, context: AgentContext) -> list[LLMMessage]:
         """컨텍스트로부터 LLM 메시지 구성"""
-        pass
+        raise NotImplementedError
+
+    async def run(self, context: AgentContext) -> AgentResult:
+        """에이전트 실행 (공통 예외 처리 포함)"""
+        try:
+            return await self.run_with_fallback(context)
+        except AllProvidersFailedError as exc:
+            return self._build_skipped_result(
+                warning="모든 프로바이더가 실패했습니다.",
+                error=str(exc),
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._build_failure_result(str(exc))
 
     @abstractmethod
-    async def run(self, context: AgentContext) -> AgentResult:
-        """에이전트 실행 (Core LLM 사용)"""
-        pass
+    async def run_with_fallback(self, context: AgentContext) -> AgentResult:
+        """Fallback 전략까지 포함한 실행 (하위 클래스에서 구현)"""
+        raise NotImplementedError
+
+    def _build_failure_result(self, error: str) -> AgentResult:
+        return AgentResult(
+            agent=self.name,
+            status=AgentExecutionStatus.FAILED,
+            success=False,
+            error=error,
+        )
+
+    def _build_skipped_result(
+        self,
+        warning: str,
+        error: str | None = None,
+    ) -> AgentResult:
+        return AgentResult(
+            agent=self.name,
+            status=AgentExecutionStatus.SKIPPED,
+            success=False,
+            skipped=True,
+            warning=warning,
+            error=error,
+        )

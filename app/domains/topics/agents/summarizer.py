@@ -1,4 +1,4 @@
-"""Summarizer Agent 구현 예시"""
+"""Summarizer Agent"""
 
 from app.core.llm import (
     LLMMessage,
@@ -6,7 +6,11 @@ from app.core.llm import (
     call_with_fallback,
     get_observe_decorator,
 )
-from app.domains.topics.agents.base import AgentContext, AgentResult, BaseAgent
+from app.domains.topics.agents.base import AgentContext, BaseAgent
+from app.domains.topics.orchestration.models import (
+    AgentExecutionStatus,
+    AgentResult,
+)
 from app.domains.topics.prompts.summarizer import (
     SYSTEM_PROMPT,
     USER_PROMPT_TEMPLATE,
@@ -39,31 +43,25 @@ class SummarizerAgent(BaseAgent):
         ]
 
     @observe()
-    async def run(self, context: AgentContext) -> AgentResult:
+    async def run_with_fallback(self, context: AgentContext) -> AgentResult:
         """Core LLM을 사용한 요약 실행"""
-        try:
-            messages = self.build_messages(context)
+        messages = self.build_messages(context)
 
-            result = await call_with_fallback(
-                tier=self.tier, messages=messages, temperature=0.3  # 요약은 낮은 온도
-            )
+        result = await call_with_fallback(
+            tier=self.tier,
+            messages=messages,
+            temperature=0.3,  # 요약은 낮은 온도
+        )
 
-            return AgentResult(
-                agent_name=self.name,
-                success=True,
-                content=result.content,
-                model_used=result.model,
-                input_tokens=result.input_tokens,
-                output_tokens=result.output_tokens,
-            )
-
-        except Exception as e:
-            return AgentResult(
-                agent_name=self.name,
-                success=False,
-                content="",
-                model_used="",
-                input_tokens=0,
-                output_tokens=0,
-                error=str(e),
-            )
+        return AgentResult(
+            agent=self.name,
+            status=AgentExecutionStatus.COMPLETED,
+            success=True,
+            content=result.content,
+            model=result.model,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            output={
+                "summary": result.content,
+            },
+        )
