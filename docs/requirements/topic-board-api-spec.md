@@ -315,7 +315,7 @@ Accept: text/event-stream
 | ----- | ---- | -------- | ----------- |
 | user_id | integer | ✅ | 사용자 ID |
 | topic_id | integer | ✅ | 토픽 보드 ID (Spring 서버 참조용) |
-| requirements | string | ✅ | 작성 요구사항 및 스타일 지시 |
+| prompt | string | ✅ | 작성 요구사항 및 스타일 지시 |
 | selected_contents | list[SelectedContent] | ✅ | 선택된 콘텐츠 목록 (Spring에서 내용 포함하여 전달) |
 | connections | list[Connection] | ❌ | 콘텐츠 간 연결 정보 (Spring에서 전달) |
 | model_alias | string | ✅ | 사용할 AI 모델 별칭 |
@@ -326,7 +326,7 @@ Accept: text/event-stream
 {
   "user_id": 123,
   "topic_id": 1,
-  "requirements": "전문적이면서도 친근한 톤으로 블로그 글 형식의 초안을 작성해주세요.",
+  "prompt": "전문적이면서도 친근한 톤으로 블로그 글 형식의 초안을 작성해주세요.",
   "selected_contents": [
     {"content_id": 1, "title": "AI 트렌드 2025", "summary": "2025년 AI 트렌드에 대한 분석..."},
     {"content_id": 2, "title": "머신러닝 입문", "summary": "머신러닝 기초 개념..."},

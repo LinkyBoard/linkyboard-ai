@@ -109,7 +109,11 @@ pipeline {
                     COMMIT=$(git rev-parse --short HEAD)
                     echo "COMMIT=$COMMIT"
                     echo "TAG=${RESOLVED_TAG}"
-                    docker build -t ${LOCAL_IMAGE}:${RESOLVED_TAG} -t ${LOCAL_IMAGE}:sha-${COMMIT} .
+                    docker build \
+                      --build-arg APP_VERSION=${RESOLVED_TAG} \
+                      -t ${LOCAL_IMAGE}:${RESOLVED_TAG} \
+                      -t ${LOCAL_IMAGE}:sha-${COMMIT} \
+                      .
                 '''
             }
         }

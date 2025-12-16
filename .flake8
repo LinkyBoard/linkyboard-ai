@@ -1,0 +1,24 @@
+[flake8]
+max-line-length = 79
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    migrations,
+    # 주석처리된 LLM API 호출 테스트 파일들
+    tests/unit/core/test_llm.py,
+    tests/unit/core/test_llm_streaming.py,
+    tests/unit/core/test_observability.py,
+    tests/unit/domains/ai/test_summarization.py,
+    tests/unit/domains/topics/test_executor.py,
+    tests/unit/domains/topics/agents/test_base.py,
+    tests/unit/domains/topics/agents/test_summarizer.py,
+    tests/unit/domains/topics/agents/test_writer.py,
+    tests/integration/ai/test_api.py,
+    tests/integration/topics/test_topics_draft_api.py,
+    tests/integration/topics/test_topics_error_handling.py,
+    tests/integration/topics/test_topics_streaming.py,
+    tests/e2e/ai/test_real.py,
+    tests/e2e/topics/test_topics_mock.py,
+    tests/e2e/topics/test_topics_real.py

@@ -44,42 +44,54 @@ run-prod: ## 프로덕션 서버 실행
 	$(UVICORN) app.main:app --host 0.0.0.0 --port 8000 --workers 4
 
 ##@ 테스트
-test: ## 전체 테스트 실행
-	$(PYTEST) -v
+test: ## 전체 테스트 실행 (Mock AI만, 과금 없음)
+	$(PYTEST) -v -m "not real_ai"
+
+test-all: ## 전체 테스트 실행 (실제 AI API 포함, 과금 발생)
+	ENABLE_REAL_AI_TESTS=true $(PYTEST) -v
 
 test-unit: ## 단위 테스트만 실행
-	$(PYTEST) tests/unit -v
+	$(PYTEST) tests/unit -v -m "not real_ai"
 
 test-integration: ## 통합 테스트만 실행
-	$(PYTEST) tests/integration -v
+	$(PYTEST) tests/integration -v -m "not real_ai"
 
 test-e2e: ## E2E 테스트만 실행
 	$(PYTEST) tests/e2e -v
 
+test-ai: ## AI 도메인 테스트만 실행 (Mock)
+	$(PYTEST) tests/unit/domains/ai tests/integration/test_ai_api.py -v -m "not real_ai"
+
+test-real-ai: ## 실제 AI API 테스트 (과금 발생)
+	ENABLE_REAL_AI_TESTS=true $(PYTEST) -v -m "real_ai"
+
 test-cov: ## 커버리지 포함 테스트 실행
-	$(PYTEST) --cov=app --cov-report=html --cov-report=term-missing
+	$(PYTEST) --cov=app --cov-report=html --cov-report=term-missing -m "not real_ai"
 
 test-cov-unit: ## 단위 테스트 커버리지
-	$(PYTEST) tests/unit --cov=app --cov-report=term-missing
+	$(PYTEST) tests/unit --cov=app --cov-report=term-missing -m "not real_ai"
 
 test-failed: ## 실패한 테스트만 재실행
-	$(PYTEST) --lf -v
+	$(PYTEST) --lf -v -m "not real_ai"
 
 test-watch: ## 파일 변경 시 자동 테스트 실행 (pytest-watch 필요)
-	poetry run ptw -- -v
+	poetry run ptw -- -v -m "not real_ai"
 
 ##@ 코드 품질
 quality: ## 코드 품질 검사 (format + lint)
 	@echo "$(GREEN)Running code quality checks...$(NC)"
 	$(ISORT) app tests scripts
 	$(BLACK) app tests scripts
-	$(FLAKE8) app tests scripts
+	$(FLAKE8) --extend-ignore=E203,W503,B008 app tests scripts
 	$(MYPY) app
 	@echo "$(GREEN)✓ Code quality checks passed$(NC)"
 
 lint: ## 린트 검사 (flake8 + mypy)
-	$(FLAKE8) app tests
+	$(FLAKE8) --extend-ignore=E203,W503,B008 app tests
 	$(MYPY) app
+
+flake8: ## flake8 검사 (pre-commit과 동일한 설정)
+	$(FLAKE8) --extend-ignore=E203,W503,B008 app tests scripts
 
 format: ## 코드 포맷팅 (black + isort)
 	$(ISORT) app tests

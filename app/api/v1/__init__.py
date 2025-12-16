@@ -5,7 +5,9 @@ from typing import Any
 from fastapi import APIRouter
 
 from app.core.schemas import APIResponse
+from app.domains.ai.router import router as ai_router
 from app.domains.contents.router import router as contents_router
+from app.domains.topics.router import router as topics_router
 from app.domains.users.router import router as users_router
 
 api_router = APIRouter()
@@ -15,6 +17,8 @@ api_router.include_router(users_router, prefix="/users", tags=["Users"])
 api_router.include_router(
     contents_router, prefix="/contents", tags=["Contents"]
 )
+api_router.include_router(ai_router, prefix="/ai", tags=["AI"])
+api_router.include_router(topics_router, prefix="/topics", tags=["Topics"])
 
 
 @api_router.get("/", response_model=APIResponse[dict[str, Any]])
