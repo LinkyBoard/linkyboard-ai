@@ -232,7 +232,7 @@ ENDSSH
                                     echo "🔄 데이터베이스 마이그레이션 시작..."
 
                                     # Harbor 로그인
-                                    printf '%s\\\\n' '${H_PASS}' | docker login ${HARBOR_URL} -u '${H_USER}' --password-stdin
+                                    printf '%s\\n' '${H_PASS}' | docker login ${HARBOR_URL} -u '${H_USER}' --password-stdin
 
                                     # 마이그레이션 전용 임시 컨테이너 실행
                                     docker run --rm \
@@ -336,6 +336,7 @@ EOF
                         smokeCheckResult = 'success'
                     } catch (Exception e) {
                         smokeCheckResult = 'failed'
+                        env.FAILURE_STAGE = 'smoke_check'
                         echo "❌ 스모크 체크 실패: ${e.message}"
 
                         if (params.AUTO_ROLLBACK && env.PREVIOUS_IMAGE != 'none') {
@@ -436,17 +437,34 @@ ENDSSH
                     def rollbackStatus = "N/A"
                     def titleEmoji = "❌"
                     def deploymentStatus = "Deployment Failed"
+                    def failureStage = "알 수 없음"
 
-                    if (env.ROLLBACK_PERFORMED == 'true') {
-                        rollbackStatus = "✅ 롤백 완료 (${env.PREVIOUS_IMAGE})"
-                        titleEmoji = "🔄"
-                        deploymentStatus = "Deployment Failed - Rolled Back"
-                    } else if (env.ROLLBACK_PERFORMED == 'none') {
-                        rollbackStatus = "⚠️ 롤백 불가 (최초 배포)"
-                        deploymentStatus = "Deployment Failed - No Rollback"
-                    } else if (env.ROLLBACK_PERFORMED == 'disabled') {
-                        rollbackStatus = "ℹ️ 자동 롤백 비활성화"
-                        deploymentStatus = "Deployment Failed - Manual Fix Required"
+                    // 실패 단계 확인
+                    if (env.FAILURE_STAGE == 'migration') {
+                        failureStage = "🗄️ 마이그레이션"
+                        deploymentStatus = "Migration Failed"
+                        rollbackStatus = "N/A (마이그레이션 전 실패)"
+                    } else if (env.FAILURE_STAGE == 'smoke_check') {
+                        failureStage = "🔍 스모크 체크"
+
+                        if (env.ROLLBACK_PERFORMED == 'true') {
+                            rollbackStatus = "✅ 롤백 완료 (${env.PREVIOUS_IMAGE})"
+                            titleEmoji = "🔄"
+                            deploymentStatus = "Smoke Check Failed - Rolled Back"
+                        } else if (env.ROLLBACK_PERFORMED == 'none') {
+                            rollbackStatus = "⚠️ 롤백 불가 (최초 배포)"
+                            deploymentStatus = "Smoke Check Failed - No Rollback"
+                        } else if (env.ROLLBACK_PERFORMED == 'disabled') {
+                            rollbackStatus = "ℹ️ 자동 롤백 비활성화"
+                            deploymentStatus = "Smoke Check Failed - Manual Fix Required"
+                        } else {
+                            rollbackStatus = "N/A"
+                            deploymentStatus = "Smoke Check Failed"
+                        }
+                    } else {
+                        // 기타 스테이지 실패 (빌드, 배포 등)
+                        failureStage = "🔧 ${env.STAGE_NAME ?: '알 수 없음'}"
+                        rollbackStatus = "N/A"
                     }
 
                     def payload = """
@@ -458,6 +476,7 @@ ENDSSH
                             "fields": [
                                 {"name": "Version", "value": "${RESOLVED_TAG}", "inline": true},
                                 {"name": "Server IP", "value": "${TARGET_HOST}", "inline": true},
+                                {"name": "실패 단계", "value": "${failureStage}", "inline": false},
                                 {"name": "Status", "value": "${deploymentStatus}", "inline": false},
                                 {"name": "Rollback", "value": "${rollbackStatus}", "inline": false},
                                 {"name": "Build URL", "value": "${BUILD_URL}", "inline": false}
