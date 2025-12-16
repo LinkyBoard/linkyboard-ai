@@ -1,10 +1,27 @@
 pipeline {
     agent any
 
+    triggers {
+        GenericTrigger(
+            genericVariables: [
+                [key: 'RELEASE_TAG', value: '$.release.tag_name'],
+                [key: 'RELEASE_ACTION', value: '$.action'],
+                [key: 'RELEASE_NAME', value: '$.release.name']
+            ],
+            causeString: 'GitHub Release: $RELEASE_NAME ($RELEASE_TAG)',
+            token: 'linkyboard-ai-release-trigger',
+            printContributedVariables: true,
+            printPostContent: true,
+            regexpFilterText: '$RELEASE_ACTION',
+            regexpFilterExpression: '^(published)$'
+        )
+    }
+
     parameters {
         string(name: 'TAG', defaultValue: '', description: '배포할 Git 태그 (예: v0.1.0)')
-        string(name: 'DEPLOY_HOST', defaultValue: '', description: '배포 대상 VM IP/도메인 (예: 10.0.0.12)')
-        booleanParam(name: 'RUN_SMOKE', defaultValue: false, description: '배포 후 스모크 체크 실행 여부')
+        string(name: 'DEPLOY_HOST', defaultValue: '', description: '배포 대상 VM IP/도메인 (기본값: Jenkins Credential에서 로드)')
+        booleanParam(name: 'RUN_SMOKE', defaultValue: true, description: '배포 후 스모크 체크 실행 여부')
+        booleanParam(name: 'AUTO_ROLLBACK', defaultValue: true, description: '스모크 체크 실패 시 자동 롤백 여부')
     }
 
     environment {
@@ -19,8 +36,7 @@ pipeline {
         ENV_FILE       = '/opt/linkyboard-ai/.env.production'
         HEALTH_URL     = 'http://127.0.0.1:8000/health'
 
-        RESOLVED_TAG   = "${params.TAG}"
-        TARGET_HOST    = "${params.DEPLOY_HOST}"
+        // RESOLVED_TAG와 TARGET_HOST는 Resolve Tag 스테이지에서 동적으로 설정
     }
 
     stages {
@@ -34,13 +50,34 @@ pipeline {
         stage('Resolve Tag') {
             steps {
                 script {
-                    if (!params.TAG?.trim()) {
-                        error('TAG 파라미터는 필수입니다. 예: v0.1.0')
+                    // GitHub Release 트리거로 실행된 경우 RELEASE_TAG 사용, 아니면 params.TAG 사용
+                    def deployTag = env.RELEASE_TAG ?: params.TAG
+
+                    if (!deployTag?.trim()) {
+                        error('TAG가 지정되지 않았습니다. GitHub Release를 생성하거나 수동으로 TAG를 입력하세요.')
                     }
-                    if (!params.DEPLOY_HOST?.trim()) {
-                        error('DEPLOY_HOST 파라미터는 필수입니다. 예: 10.0.0.12')
+
+                    // DEPLOY_HOST가 비어있으면 Jenkins Credential에서 로드
+                    def deployHost = params.DEPLOY_HOST
+                    if (!deployHost?.trim()) {
+                        withCredentials([string(credentialsId: 'ai-deploy-host', variable: 'DEFAULT_HOST')]) {
+                            deployHost = env.DEFAULT_HOST
+                        }
+                        echo "ℹ️  DEPLOY_HOST가 지정되지 않아 기본값을 사용합니다: ${deployHost}"
                     }
-                    sh "git checkout ${params.TAG}"
+
+                    if (!deployHost?.trim()) {
+                        error('DEPLOY_HOST를 지정하거나 Jenkins Credential(ai-deploy-host)을 설정하세요.')
+                    }
+
+                    // 환경변수로 설정
+                    env.RESOLVED_TAG = deployTag
+                    env.TARGET_HOST = deployHost
+
+                    echo "🎯 배포 태그: ${env.RESOLVED_TAG}"
+                    echo "🎯 배포 서버: ${env.TARGET_HOST}"
+
+                    sh "git checkout ${env.RESOLVED_TAG}"
                 }
             }
         }
@@ -145,6 +182,87 @@ pipeline {
             }
         }
 
+        stage('Capture Previous Deployment') {
+            steps {
+                withCredentials([
+                    sshUserPrivateKey(credentialsId: 'deploy-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+                ]) {
+                    script {
+                        def previousImage = sh(
+                            script: """
+                                set -e
+                                ssh -o StrictHostKeyChecking=no -i \$SSH_KEY \$SSH_USER@${TARGET_HOST} <<'ENDSSH'
+                                    if docker ps --format '{{.Names}}' | grep -qx '${CONTAINER_NAME}'; then
+                                        docker inspect ${CONTAINER_NAME} --format='{{.Config.Image}}' || echo 'none'
+                                    else
+                                        echo 'none'
+                                    fi
+ENDSSH
+                            """,
+                            returnStdout: true
+                        ).trim()
+
+                        env.PREVIOUS_IMAGE = previousImage
+
+                        if (previousImage != 'none') {
+                            echo "📦 이전 배포 이미지: ${previousImage}"
+                        } else {
+                            echo "ℹ️  실행 중인 컨테이너가 없습니다. 최초 배포입니다."
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Run Database Migrations') {
+            steps {
+                script {
+                    try {
+                        withCredentials([
+                            usernamePassword(credentialsId: 'harbor-jenkins-bot', usernameVariable: 'H_USER', passwordVariable: 'H_PASS'),
+                            string(credentialsId: 'harbor-ip', variable: 'HARBOR_URL'),
+                            sshUserPrivateKey(credentialsId: 'deploy-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+                        ]) {
+                            sh """
+                                set -e
+
+                                ssh -o StrictHostKeyChecking=no -i \$SSH_KEY \$SSH_USER@${TARGET_HOST} <<'ENDSSH'
+                                    set -e
+
+                                    echo "🔄 데이터베이스 마이그레이션 시작..."
+
+                                    # Harbor 로그인
+                                    printf '%s\\n' '${H_PASS}' | docker login ${HARBOR_URL} -u '${H_USER}' --password-stdin
+
+                                    # 마이그레이션 전용 임시 컨테이너 실행
+                                    docker run --rm \
+                                      --env-file ${ENV_FILE} \
+                                      --network host \
+                                      ${HARBOR_URL}/${HARBOR_REPO}:${RESOLVED_TAG} \
+                                      alembic upgrade head
+
+                                    # 마이그레이션 성공 확인
+                                    if [ \$? -eq 0 ]; then
+                                      echo "✅ 마이그레이션 완료"
+                                    else
+                                      echo "❌ 마이그레이션 실패"
+                                      docker logout ${HARBOR_URL}
+                                      exit 1
+                                    fi
+
+                                    docker logout ${HARBOR_URL}
+ENDSSH
+                            """
+                        }
+                    } catch (Exception e) {
+                        env.FAILURE_STAGE = 'migration'
+                        echo "❌ 마이그레이션 실패: ${e.message}"
+                        throw e
+                    }
+                }
+            }
+        }
+
         stage('Deploy to Remote VM (SSH)') {
             steps {
                 withCredentials([
@@ -188,29 +306,100 @@ ENDSSH
         stage('Smoke Check (Remote)') {
             when { expression { return params.RUN_SMOKE } }
             steps {
-                withCredentials([
-                    sshUserPrivateKey(credentialsId: 'deploy-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
-                ]) {
-                    sh '''
-                        set -e
-                        ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$SSH_USER@${TARGET_HOST}" \
-                        HEALTH_URL="$HEALTH_URL" \
-                        CONTAINER_NAME="$CONTAINER_NAME" \
-                        bash -s << 'EOF'
-                          set -e
-                          echo "Health check: $HEALTH_URL"
-                          for i in $(seq 1 30); do
-                            if curl -fsS "$HEALTH_URL" >/dev/null; then
-                              echo "Health check OK"
-                              exit 0
-                            fi
-                            sleep 1
-                          done
-                          echo "Health check failed"
-                          docker logs --tail 200 "$CONTAINER_NAME" || true
-                          exit 1
+                script {
+                    def smokeCheckResult = 'unknown'
+                    try {
+                        withCredentials([
+                            sshUserPrivateKey(credentialsId: 'deploy-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+                        ]) {
+                            sh '''
+                                set -e
+                                ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$SSH_USER@${TARGET_HOST}" \
+                                HEALTH_URL="$HEALTH_URL" \
+                                CONTAINER_NAME="$CONTAINER_NAME" \
+                                bash -s << 'EOF'
+                                  set -e
+                                  echo "Health check: $HEALTH_URL"
+                                  for i in $(seq 1 30); do
+                                    if curl -fsS "$HEALTH_URL" >/dev/null; then
+                                      echo "✅ Health check OK"
+                                      exit 0
+                                    fi
+                                    sleep 1
+                                  done
+                                  echo "❌ Health check failed"
+                                  docker logs --tail 200 "$CONTAINER_NAME" || true
+                                  exit 1
 EOF
-                    '''
+                            '''
+                        }
+                        smokeCheckResult = 'success'
+                    } catch (Exception e) {
+                        smokeCheckResult = 'failed'
+                        env.FAILURE_STAGE = 'smoke_check'
+                        echo "❌ 스모크 체크 실패: ${e.message}"
+
+                        if (params.AUTO_ROLLBACK && env.PREVIOUS_IMAGE != 'none') {
+                            echo "🔄 자동 롤백을 시작합니다..."
+
+                            withCredentials([
+                                usernamePassword(credentialsId: 'harbor-jenkins-bot', usernameVariable: 'H_USER', passwordVariable: 'H_PASS'),
+                                string(credentialsId: 'harbor-ip', variable: 'HARBOR_URL'),
+                                sshUserPrivateKey(credentialsId: 'deploy-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+                            ]) {
+                                sh """
+                                    set -e
+
+                                    ssh -o StrictHostKeyChecking=no -i \\$SSH_KEY \\$SSH_USER@${TARGET_HOST} <<'ENDSSH'
+                                        set -e
+
+                                        echo "🔄 롤백 시작: ${env.PREVIOUS_IMAGE}"
+
+                                        # 실패한 컨테이너 중지 및 제거
+                                        if docker ps -a --format '{{.Names}}' | grep -qx "${CONTAINER_NAME}"; then
+                                          docker stop ${CONTAINER_NAME} || true
+                                          docker rm ${CONTAINER_NAME} || true
+                                        fi
+
+                                        # 이전 이미지로 컨테이너 재시작
+                                        docker run -d \
+                                          --name ${CONTAINER_NAME} \
+                                          --restart unless-stopped \
+                                          --env-file ${ENV_FILE} \
+                                          -p ${HOST_PORT}:${APP_PORT} \
+                                          ${env.PREVIOUS_IMAGE}
+
+                                        echo "⏳ 롤백된 컨테이너 헬스 체크 중..."
+                                        sleep 5
+
+                                        # 롤백된 컨테이너 헬스 체크
+                                        for i in \$(seq 1 10); do
+                                          if curl -fsS "${HEALTH_URL}" >/dev/null; then
+                                            echo "✅ 롤백 완료 및 헬스 체크 성공"
+                                            exit 0
+                                          fi
+                                          sleep 1
+                                        done
+
+                                        echo "⚠️  롤백은 완료되었으나 헬스 체크 실패. 컨테이너 로그 확인 필요"
+                                        docker logs --tail 100 ${CONTAINER_NAME} || true
+ENDSSH
+                                """
+                            }
+
+                            env.ROLLBACK_PERFORMED = 'true'
+                            echo "✅ 이전 버전(${env.PREVIOUS_IMAGE})으로 롤백 완료"
+                        } else if (params.AUTO_ROLLBACK && env.PREVIOUS_IMAGE == 'none') {
+                            echo "⚠️  이전 배포가 없어 롤백할 수 없습니다."
+                            env.ROLLBACK_PERFORMED = 'none'
+                        } else {
+                            echo "ℹ️  자동 롤백이 비활성화되어 있습니다. 수동으로 조치가 필요합니다."
+                            env.ROLLBACK_PERFORMED = 'disabled'
+                        }
+
+                        // 스모크 체크 실패는 빌드 실패로 처리
+                        error("스모크 체크 실패")
+                    }
                 }
             }
         }
@@ -245,16 +434,51 @@ EOF
                 string(credentialsId: 'discord-ai-failure-webhook-url', variable: 'DISCORD_URL')
             ]) {
                 script {
+                    def rollbackStatus = "N/A"
+                    def titleEmoji = "❌"
+                    def deploymentStatus = "Deployment Failed"
+                    def failureStage = "알 수 없음"
+
+                    // 실패 단계 확인
+                    if (env.FAILURE_STAGE == 'migration') {
+                        failureStage = "🗄️ 마이그레이션"
+                        deploymentStatus = "Migration Failed"
+                        rollbackStatus = "N/A (마이그레이션 전 실패)"
+                    } else if (env.FAILURE_STAGE == 'smoke_check') {
+                        failureStage = "🔍 스모크 체크"
+
+                        if (env.ROLLBACK_PERFORMED == 'true') {
+                            rollbackStatus = "✅ 롤백 완료 (${env.PREVIOUS_IMAGE})"
+                            titleEmoji = "🔄"
+                            deploymentStatus = "Smoke Check Failed - Rolled Back"
+                        } else if (env.ROLLBACK_PERFORMED == 'none') {
+                            rollbackStatus = "⚠️ 롤백 불가 (최초 배포)"
+                            deploymentStatus = "Smoke Check Failed - No Rollback"
+                        } else if (env.ROLLBACK_PERFORMED == 'disabled') {
+                            rollbackStatus = "ℹ️ 자동 롤백 비활성화"
+                            deploymentStatus = "Smoke Check Failed - Manual Fix Required"
+                        } else {
+                            rollbackStatus = "N/A"
+                            deploymentStatus = "Smoke Check Failed"
+                        }
+                    } else {
+                        // 기타 스테이지 실패 (빌드, 배포 등)
+                        failureStage = "🔧 ${env.STAGE_NAME ?: '알 수 없음'}"
+                        rollbackStatus = "N/A"
+                    }
+
                     def payload = """
                     {
                         "username": "LinkyBoard AI CD",
                         "embeds": [{
-                            "title": "❌ AI 서버 배포 실패",
+                            "title": "${titleEmoji} AI 서버 배포 실패",
                             "color": 15158332,
                             "fields": [
                                 {"name": "Version", "value": "${RESOLVED_TAG}", "inline": true},
                                 {"name": "Server IP", "value": "${TARGET_HOST}", "inline": true},
-                                {"name": "Status", "value": "Deployment Failed", "inline": false},
+                                {"name": "실패 단계", "value": "${failureStage}", "inline": false},
+                                {"name": "Status", "value": "${deploymentStatus}", "inline": false},
+                                {"name": "Rollback", "value": "${rollbackStatus}", "inline": false},
                                 {"name": "Build URL", "value": "${BUILD_URL}", "inline": false}
                             ]
                         }]
