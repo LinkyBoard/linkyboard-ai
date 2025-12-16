@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -22,6 +23,9 @@ from app.core.schemas import APIResponse
 # 로깅 설정 초기화
 setup_logging()
 logger = get_logger(__name__)
+
+# 앱 버전 (GitHub 태그에서 자동 주입)
+APP_VERSION = os.getenv("APP_VERSION", "v0.1.0")
 
 
 @asynccontextmanager
@@ -52,7 +56,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         description="FastAPI Domain-Driven Design Project Template",
-        version="0.1.0",
+        version=APP_VERSION,
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",

@@ -22,6 +22,10 @@ RUN poetry config virtualenvs.create false \
 # 프로덕션 스테이지
 FROM python:3.13-slim as production
 
+# 버전 정보 (빌드 시 주입)
+ARG APP_VERSION=v0.1.0
+ENV APP_VERSION=$APP_VERSION
+
 # 환경 변수 설정
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
