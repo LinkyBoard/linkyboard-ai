@@ -26,6 +26,13 @@ services:
       - S3_BUCKET_CONTENTS=linkyboard-contents
       - S3_REGION=us-east-1
       - S3_USE_SSL=false
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_HOST=http://langfuse:3000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
     depends_on:
       db:
         condition: service_healthy
@@ -33,6 +40,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      langfuse:
+        condition: service_started
     networks:
       - app-network
     restart: unless-stopped

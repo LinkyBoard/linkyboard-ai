@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from app.domains.topics.orchestration.models import RetrievalMode
 
@@ -52,14 +52,8 @@ class BaseTopicsRequest(BaseModel):
     topic_id: int
     stream: bool = False
     verbose: bool = False
-    model_alias: str
-
-    @field_validator("model_alias")
-    @classmethod
-    def validate_model_alias(cls, value: str) -> str:
-        if not value:
-            raise ValueError("model_alias는 필수입니다.")
-        return value
+    # Stage 1: model_alias는 Optional이며 제공되어도 무시됨
+    model_alias: str | None = None
 
 
 class TopicsAskRequest(BaseTopicsRequest):

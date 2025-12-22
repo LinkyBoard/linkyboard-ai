@@ -206,7 +206,6 @@ Accept: text/event-stream
 | prompt | string | ✅ | AI에게 요청할 질의/지시사항 |
 | selected_contents | list[SelectedContent] | ✅ | 선택된 콘텐츠 목록 (Spring에서 내용 포함하여 전달) |
 | connections | list[Connection] | ❌ | 콘텐츠 간 연결 정보 (Spring에서 전달) |
-| model_alias | string | ✅ | 사용할 AI 모델 별칭 |
 | stream | boolean | ❌ | SSE 스트리밍 여부 (기본: false) |
 | verbose | boolean | ❌ | 상세 진행 상황 표시 여부 (기본: false, stream=true일 때만 유효) |
 
@@ -241,7 +240,6 @@ Accept: text/event-stream
   "connections": [
     {"source_content_id": 1, "target_content_id": 2, "connection_type": "supports", "label": "기반 기술"}
   ],
-  "model_alias": "gpt-4o-mini",
   "stream": true
 }
 ```
@@ -260,15 +258,23 @@ Accept: text/event-stream
       {"content_id": 3, "title": "딥러닝 활용", "tokens_used": 450}
     ],
     "usage": {
-      "input_tokens": 2150,
-      "output_tokens": 850,
-      "total_tokens": 3000,
-      "wtu_cost": 12
-    },
-    "model_info": {
-      "alias": "gpt-4o-mini",
-      "model_name": "gpt-4o-mini-2024-07-18",
-      "provider": "openai"
+      "total_wtu": 12,
+      "total_input_tokens": 2150,
+      "total_output_tokens": 850,
+      "agents": {
+        "summarizer": {
+          "model": "claude-4.5-haiku",
+          "input_tokens": 800,
+          "output_tokens": 200,
+          "wtu": 2
+        },
+        "analyzer": {
+          "model": "gpt-5-mini",
+          "input_tokens": 1350,
+          "output_tokens": 650,
+          "wtu": 10
+        }
+      }
     }
   }
 }
@@ -318,7 +324,6 @@ Accept: text/event-stream
 | prompt | string | ✅ | 작성 요구사항 및 스타일 지시 |
 | selected_contents | list[SelectedContent] | ✅ | 선택된 콘텐츠 목록 (Spring에서 내용 포함하여 전달) |
 | connections | list[Connection] | ❌ | 콘텐츠 간 연결 정보 (Spring에서 전달) |
-| model_alias | string | ✅ | 사용할 AI 모델 별칭 |
 | stream | boolean | ❌ | SSE 스트리밍 여부 (기본: false) |
 | verbose | boolean | ❌ | 상세 진행 상황 표시 여부 (기본: false, stream=true일 때만 유효) |
 
@@ -335,7 +340,6 @@ Accept: text/event-stream
   "connections": [
     {"source_content_id": 1, "target_content_id": 2, "connection_type": "supports"}
   ],
-  "model_alias": "gpt-4o-mini",
   "stream": true
 }
 ```
@@ -355,15 +359,23 @@ Accept: text/event-stream
       {"content_id": 3, "title": "딥러닝 활용", "tokens_used": 450}
     ],
     "usage": {
-      "input_tokens": 2150,
-      "output_tokens": 1500,
-      "total_tokens": 3650,
-      "wtu_cost": 18
-    },
-    "model_info": {
-      "alias": "gpt-4o-mini",
-      "model_name": "gpt-4o-mini-2024-07-18",
-      "provider": "openai"
+      "total_wtu": 18,
+      "total_input_tokens": 2150,
+      "total_output_tokens": 1500,
+      "agents": {
+        "summarizer": {
+          "model": "claude-4.5-haiku",
+          "input_tokens": 500,
+          "output_tokens": 200,
+          "wtu": 2
+        },
+        "writer": {
+          "model": "gpt-5-mini",
+          "input_tokens": 1650,
+          "output_tokens": 1300,
+          "wtu": 16
+        }
+      }
     }
   }
 }
@@ -657,3 +669,4 @@ AI 도메인 통합 방식(옵션 C)으로 확장 가능합니다.
 | 1.2 | 2025-12-02 | WTU 시스템 및 모델 카탈로그를 AI 도메인으로 이동 |
 | 1.3 | 2025-12-02 | SSE 스트리밍 지원 추가, 콘텐츠 전달 방식 변경 |
 | 2.0 | 2025-12-03 | AI 오케스트레이션 아키텍처 반영 (멀티 에이전트, 병렬 실행) |
+| 2.1 | 2025-12-22 | model_alias 필드 제거 (Stage 1: 서버 고정 모델만 사용) |

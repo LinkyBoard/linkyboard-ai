@@ -3,6 +3,8 @@
 AI 도메인 관련 API 엔드포인트입니다.
 """
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +20,6 @@ from app.domains.ai.schemas import (
     SearchRequest,
     SearchResultResponse,
     SummarizeResponse,
-    YoutubeSummarizeRequest,
 )
 from app.domains.ai.search.service import AISearchService
 from app.domains.ai.summarization.service import SummarizationService
@@ -48,16 +49,27 @@ def get_search_service(
 async def summarize_webpage(
     url: str = Form(...),
     user_id: int = Form(...),
-    html_file: UploadFile = File(...),
+    html_file: Optional[UploadFile] = File(None),
     tag_count: int = Form(5),
     refresh: bool = Form(False),
     summarization_service: SummarizationService = Depends(
         get_summarization_service
     ),
 ):
-    """웹페이지 요약 생성"""
-    html_content = await html_file.read()
-    html_str = html_content.decode("utf-8")
+    """웹페이지 요약 생성
+
+    Args:
+        url: 웹페이지 URL
+        user_id: 사용자 ID
+        html_file: HTML 파일 (옵션). 제공되지 않으면 URL에서 직접 가져옴
+        tag_count: 태그 개수
+        refresh: 캐시 갱신 여부
+    """
+    html_str = None
+    if html_file:
+        # HTML 파일이 제공된 경우
+        html_content = await html_file.read()
+        html_str = html_content.decode("utf-8")
 
     result = await summarization_service.summarize_webpage(
         url=url,
@@ -78,18 +90,41 @@ async def summarize_webpage(
     dependencies=[Depends(verify_internal_api_key)],
 )
 async def summarize_youtube(
-    request: YoutubeSummarizeRequest,
+    url: str = Form(..., description="YouTube URL"),
+    user_id: int = Form(..., description="사용자 ID"),
+    subtitle_file: Optional[UploadFile] = File(
+        None, description="자막 파일 (SRT, VTT 등). 미제공 시 enable_stt 필요"
+    ),
+    tag_count: int = Form(5, ge=1, le=20, description="추천 태그 수"),
+    refresh: bool = Form(False, description="캐시 무시하고 재생성"),
+    enable_stt: bool = Form(False, description="STT 활성화 (준비 중)"),
     summarization_service: SummarizationService = Depends(
         get_summarization_service
     ),
 ):
-    """유튜브 요약 생성"""
+    """유튜브 요약 생성
+
+    Args:
+        url: YouTube URL
+        user_id: 사용자 ID
+        subtitle_file: 자막 파일 (옵션). SRT, VTT 등의 자막 파일
+        tag_count: 추천 태그 수
+        refresh: 캐시 무시하고 재생성 여부
+        enable_stt: STT 활성화 여부 (아직 준비 중)
+    """
+    subtitle_str = None
+    if subtitle_file:
+        # 자막 파일이 제공된 경우
+        subtitle_content = await subtitle_file.read()
+        subtitle_str = subtitle_content.decode("utf-8")
 
     result = await summarization_service.summarize_youtube(
-        url=request.url,
-        user_id=request.user_id,
-        tag_count=request.tag_count,
-        refresh=request.refresh,
+        url=url,
+        subtitle_content=subtitle_str,
+        user_id=user_id,
+        tag_count=tag_count,
+        refresh=refresh,
+        enable_stt=enable_stt,
     )
 
     return create_response(

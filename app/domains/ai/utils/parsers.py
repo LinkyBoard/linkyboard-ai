@@ -7,25 +7,62 @@ import hashlib
 import re
 from typing import Union, cast
 
+import httpx
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
-from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import (
-    NoTranscriptFound,
-    TranscriptsDisabled,
-    VideoUnavailable,
-)
 
 from app.core.logging import get_logger
-from app.domains.ai.exceptions import (
-    HTMLParseException,
-    InvalidYoutubeURLException,
-    PDFParseException,
-    TranscriptNotAvailableException,
-    YoutubeVideoNotFoundException,
-)
+from app.domains.ai.exceptions import HTMLParseException, PDFParseException
 
 logger = get_logger(__name__)
+
+
+async def fetch_html_from_url(url: str, timeout: float = 30.0) -> str:
+    """URL에서 HTML 콘텐츠 가져오기
+
+    Args:
+        url: 가져올 웹페이지 URL
+        timeout: 요청 타임아웃 (초, 기본: 30.0)
+
+    Returns:
+        str: HTML 콘텐츠
+
+    Raises:
+        HTMLParseException: HTML 가져오기 실패 시
+    """
+    try:
+        async with httpx.AsyncClient(
+            timeout=timeout, follow_redirects=True
+        ) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+
+            # 인코딩 감지 및 디코딩
+            html_content: str
+            if response.encoding:
+                html_content = str(response.text)
+            else:
+                # 인코딩이 감지되지 않으면 UTF-8로 시도
+                html_content = response.content.decode(
+                    "utf-8", errors="replace"
+                )
+
+            logger.info(
+                f"Fetched HTML from {url} ({len(html_content)} characters)"
+            )
+            return html_content
+
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error fetching {url}: {e.response.status_code}")
+        raise HTMLParseException(
+            detail_msg=f"URL에서 HTML을 가져올 수 없습니다: HTTP {e.response.status_code}"
+        )
+    except httpx.TimeoutException:
+        logger.error(f"Timeout fetching {url}")
+        raise HTMLParseException(detail_msg=f"URL 요청 시간 초과: {url}")
+    except Exception as e:
+        logger.error(f"Failed to fetch HTML from {url}: {e}")
+        raise HTMLParseException(detail_msg=f"URL에서 HTML 가져오기 실패: {str(e)}")
 
 
 def extract_text_from_html(html_content: str) -> str:
@@ -122,126 +159,68 @@ def extract_text_from_pdf(pdf_content: bytes) -> str:
         raise PDFParseException(detail_msg=f"PDF 파싱 실패: {str(e)}")
 
 
-def extract_youtube_video_id(url: str) -> str:
-    """YouTube URL에서 비디오 ID 추출
+def parse_subtitle_file(subtitle_content: str) -> str:
+    """자막 파일 또는 일반 텍스트에서 텍스트 추출
 
     Args:
-        url: YouTube URL
+        subtitle_content: 자막 파일 내용 (SRT, VTT 등) 또는 일반 텍스트
 
     Returns:
-        str: 비디오 ID
+        str: 추출된 텍스트
 
     Raises:
-        InvalidYoutubeURLException: 유효하지 않은 YouTube URL
+        HTMLParseException: 자막 파싱 실패 시
     """
-    # youtu.be 형식
-    match = re.search(r"youtu\.be/([a-zA-Z0-9_-]{11})", url)
-    if match:
-        return match.group(1)
-
-    # youtube.com/watch?v= 형식
-    match = re.search(r"[?&]v=([a-zA-Z0-9_-]{11})", url)
-    if match:
-        return match.group(1)
-
-    # youtube.com/embed/ 형식
-    match = re.search(r"youtube\.com/embed/([a-zA-Z0-9_-]{11})", url)
-    if match:
-        return match.group(1)
-
-    raise InvalidYoutubeURLException(url=url)
-
-
-def get_youtube_transcript(
-    video_id: str, languages: list[str] | None = None
-) -> str:
-    """YouTube 자막 추출
-
-    Args:
-        video_id: YouTube 비디오 ID
-        languages: 선호 언어 목록 (기본: ['ko', 'en'])
-
-    Returns:
-        str: 자막 텍스트
-
-    Raises:
-        YoutubeVideoNotFoundException: 동영상을 찾을 수 없음
-        TranscriptNotAvailableException: 자막을 사용할 수 없음
-    """
-    if languages is None:
-        languages = ["ko", "en"]
-
     try:
-        # 테스트/모킹 호환을 위해 직접 get_transcript도 우선 시도
-        try:
-            transcript_data = YouTubeTranscriptApi.get_transcript(
-                video_id, languages=languages
-            )
-            text = " ".join(item["text"] for item in transcript_data)
-            text = re.sub(r"\s+", " ", text)
-            logger.info(
-                f"Extracted {len(text)} characters from YouTube "
-                f"transcript (video_id={video_id}) via get_transcript"
-            )
-            return text.strip()
-        except Exception:
-            pass
+        lines = subtitle_content.strip().split("\n")
+        text_parts = []
 
-        # 자막 가져오기
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        # VTT 헤더 체크
+        is_vtt = lines[0].strip().upper() == "WEBVTT"
 
-        # 선호 언어 순서대로 시도
-        transcript = None
-        for lang in languages:
-            try:
-                transcript = transcript_list.find_transcript([lang])
-                break
-            except NoTranscriptFound:
+        for line in lines:
+            line = line.strip()
+
+            # 빈 줄 무시
+            if not line:
                 continue
 
-        # 선호 언어가 없으면 사용 가능한 첫 번째 자막
-        if transcript is None:
-            try:
-                transcript = transcript_list.find_generated_transcript(
-                    languages
-                )
-            except NoTranscriptFound:
-                # 자동 생성 자막도 없으면 수동 자막 중 첫 번째
-                # TODO : mp3 -> transcript 변환
-                available = list(transcript_list)
-                if available:
-                    transcript = available[0]
-                else:
-                    raise TranscriptNotAvailableException(
-                        video_id=video_id,
-                        reason="사용 가능한 자막이 없습니다",
-                    )
+            # VTT 헤더 무시
+            if is_vtt and line.upper().startswith("WEBVTT"):
+                continue
 
-        # 자막 텍스트 추출
-        transcript_data = transcript.fetch()
-        text_parts = [item["text"] for item in transcript_data]
+            # 숫자만 있는 줄 무시 (자막 번호)
+            if line.isdigit():
+                continue
+
+            # 타임스탬프 줄 무시
+            if "-->" in line:
+                continue
+
+            # 타임스탬프 패턴 무시 (00:00:00,000 형식)
+            if re.match(r"^\d{2}:\d{2}:\d{2}[,\.]\d{3}$", line):
+                continue
+
+            # 나머지는 모두 텍스트로 처리
+            text_parts.append(line)
+
         text = " ".join(text_parts)
-
         # 공백 정리
         text = re.sub(r"\s+", " ", text)
 
+        if not text.strip():
+            raise HTMLParseException(detail_msg="자막 파일에서 텍스트를 추출할 수 없습니다")
+
         logger.info(
-            f"Extracted {len(text)} characters from YouTube "
-            f"transcript (video_id={video_id})"
+            f"Extracted {len(text)} characters from subtitle/text file"
         )
         return text.strip()
 
-    except VideoUnavailable:
-        logger.error(f"YouTube video not found: {video_id}")
-        raise YoutubeVideoNotFoundException(video_id=video_id)
-    except (NoTranscriptFound, TranscriptsDisabled) as e:
-        logger.warning(f"Transcript not available: {video_id} - {e}")
-        raise TranscriptNotAvailableException(video_id=video_id, reason=str(e))
+    except HTMLParseException:
+        raise
     except Exception as e:
-        logger.error(f"YouTube transcript extraction failed: {e}")
-        raise TranscriptNotAvailableException(
-            video_id=video_id, reason=f"자막 추출 실패: {str(e)}"
-        )
+        logger.error(f"Subtitle parsing failed: {e}")
+        raise HTMLParseException(detail_msg=f"자막 파싱 실패: {str(e)}")
 
 
 def calculate_content_hash(content: Union[str, bytes]) -> str:
