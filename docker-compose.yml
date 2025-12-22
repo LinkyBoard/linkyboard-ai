@@ -99,32 +99,30 @@ services:
 
   # Self-hosted Langfuse (dev observability)
   langfuse:
-    image: langfuse/langfuse:latest
+    image: langfuse/langfuse:2
     container_name: linkyboard-langfuse
     depends_on:
       langfuse-db:
-        condition: service_healthy
-      langfuse-clickhouse:
         condition: service_healthy
     environment:
       NEXTAUTH_URL: http://localhost:3000
       NEXTAUTH_SECRET: dev-nextauth-secret-change-in-prod
       SALT: dev-salt-change-in-prod
       DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
-      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
-      CLICKHOUSE_MIGRATION_URL: clickhouse://${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD-}@langfuse-clickhouse:9000/langfuse
-      CLICKHOUSE_CLUSTER: ${CLICKHOUSE_CLUSTER:-}
-      CLICKHOUSE_REPLICATION: ${CLICKHOUSE_REPLICATION:-false}
-      TELEMETRY_ENABLED: "false"
-      NODE_ENV: production
+      TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY_ENABLED:-false}
+      NODE_ENV: ${LANGFUSE_NODE_ENV:-production}
       HOSTNAME: 0.0.0.0
     ports:
       - "3000:3000"
     networks:
       - app-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   langfuse-db:
     image: postgres:16-alpine
@@ -144,34 +142,36 @@ services:
       - app-network
     restart: unless-stopped
 
-  langfuse-clickhouse:
-    image: clickhouse/clickhouse-server:23.8
-    container_name: linkyboard-langfuse-clickhouse
-    environment:
-      CLICKHOUSE_DB: langfuse
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
-    ulimits:
-      nofile:
-        soft: 262144
-        hard: 262144
-    volumes:
-      - langfuse_clickhouse_data:/var/lib/clickhouse
-    healthcheck:
-      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-network
-    restart: unless-stopped
+  # ClickHouse (Optional - for high-volume production deployments)
+  # Currently disabled as PostgreSQL-only setup is sufficient for development
+  # langfuse-clickhouse:
+  #   image: clickhouse/clickhouse-server:23.8
+  #   container_name: linkyboard-langfuse-clickhouse
+  #   environment:
+  #     CLICKHOUSE_DB: langfuse
+  #     CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+  #     CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+  #   ulimits:
+  #     nofile:
+  #       soft: 262144
+  #       hard: 262144
+  #   volumes:
+  #     - langfuse_clickhouse_data:/var/lib/clickhouse
+  #   healthcheck:
+  #     test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - app-network
+  #   restart: unless-stopped
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
   langfuse_db_data:
-  langfuse_clickhouse_data:
+  # langfuse_clickhouse_data:  # Uncomment if using ClickHouse
 
 networks:
   app-network:
