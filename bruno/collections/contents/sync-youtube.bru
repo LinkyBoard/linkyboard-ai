@@ -1,0 +1,29 @@
+meta {
+  name: "Sync YouTube Content"
+  type: "http"
+  seq: 2
+}
+
+request {
+  method: "POST"
+  url: "{{apiBase}}/contents/youtube/sync"
+
+  headers {
+    Accept: "application/json"
+    Content-Type: "application/json"
+    X-Internal-Api-Key: "{{internalApiKey}}"
+  }
+
+  body: json({
+    "content_id": 2001,
+    "user_id": {{defaultUserId}},
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "content_hash": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+    "title": "Example YouTube video",
+    "summary": "Short summary of the video.",
+    "tags": ["video", "demo"],
+    "category": "default",
+    "thumbnail": "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+    "memo": "YouTube sync example"
+  })
+}

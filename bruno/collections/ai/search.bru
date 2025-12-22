@@ -1,0 +1,27 @@
+meta {
+  name: "Search Contents (AI)"
+  type: "http"
+  seq: 1
+}
+
+request {
+  method: "POST"
+  url: "{{apiBase}}/ai/search"
+
+  headers {
+    Accept: "application/json"
+    Content-Type: "application/json"
+    X-Internal-Api-Key: "{{internalApiKey}}"
+  }
+
+  body: json({
+    "query": "fastapi",
+    "user_id": {{defaultUserId}},
+    "search_mode": "hybrid",
+    "filters": null,
+    "page": 1,
+    "size": 10,
+    "threshold": 0.5,
+    "include_chunks": false
+  })
+}

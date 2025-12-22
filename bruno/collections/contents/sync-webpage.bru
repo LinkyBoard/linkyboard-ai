@@ -1,0 +1,29 @@
+meta {
+  name: "Sync Webpage Content"
+  type: "http"
+  seq: 1
+}
+
+request {
+  method: "POST"
+  url: "{{apiBase}}/contents/webpage/sync"
+
+  headers {
+    Accept: "application/json"
+    Content-Type: "application/json"
+    X-Internal-Api-Key: "{{internalApiKey}}"
+  }
+
+  body: json({
+    "content_id": 1001,
+    "user_id": {{defaultUserId}},
+    "url": "https://example.com/article",
+    "content_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "title": "Example webpage title",
+    "summary": "Short summary of the page.",
+    "tags": ["tag1", "tag2"],
+    "category": "default",
+    "thumbnail": "https://example.com/thumbnail.png",
+    "memo": "Imported via Bruno"
+  })
+}

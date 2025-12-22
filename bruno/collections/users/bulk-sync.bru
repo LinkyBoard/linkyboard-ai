@@ -1,0 +1,23 @@
+meta {
+  name: "Bulk Sync Users"
+  type: "http"
+  seq: 3
+}
+
+request {
+  method: "POST"
+  url: "{{apiBase}}/users/bulk"
+
+  headers {
+    Accept: "application/json"
+    Content-Type: "application/json"
+    X-Internal-Api-Key: "{{internalApiKey}}"
+  }
+
+  body: json({
+    "users": [
+      { "id": {{defaultUserId}} },
+      { "id": 2 }
+    ]
+  })
+}

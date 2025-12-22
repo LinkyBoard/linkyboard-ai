@@ -190,8 +190,23 @@ PERPLEXITY_API_KEY=pplx-...
 # LangFuse (선택사항)
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_HOST=https://cloud.langfuse.com
+LANGFUSE_HOST=http://localhost:3000  # self-hosted LangFuse 기본값
 ```
+
+### Self-hosted LangFuse (Docker Compose)
+
+개발용 `docker-compose.yml`에서 LangFuse + Postgres + ClickHouse가 기본 포함됩니다:
+
+```bash
+docker compose up -d
+```
+
+- 기본 포트: `3000` (이미 `LANGFUSE_HOST` 기본값과 일치)
+- `NEXTAUTH_SECRET`, `SALT`는 실제 서비스에서는 강력한 값으로 교체하세요.
+- ClickHouse 마이그레이션 오류가 발생하면 `CLICKHOUSE_MIGRATION_URL`이 설정되었는지 확인하세요
+  (`clickhouse://default:@langfuse-clickhouse:9000/langfuse`).
+- `CLICKHOUSE_USER`(기본 `default`)와 `CLICKHOUSE_PASSWORD`도 LangFuse 컨테이너 환경 변수에 설정되어야 합니다. 비밀번호를 설정했다면 ClickHouse 컨테이너에도 동일하게 주입하세요(`CLICKHOUSE_PASSWORD`), 기본은 빈 값입니다.
+- 단일 노드(dev)에서는 `CLICKHOUSE_CLUSTER=`(빈 값), `CLICKHOUSE_REPLICATION=false`로 복제/클러스터 기능을 꺼야 `ReplicatedMergeTree`/ON CLUSTER 에러를 피할 수 있습니다.
 
 ## Fallback 순서
 

@@ -21,7 +21,7 @@ make test-langfuse
 ```bash
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_HOST=https://us.cloud.langfuse.com
+LANGFUSE_HOST=http://localhost:3000  # self-hosted LangFuse
 ```
 
 ### LLM 통합 테스트
@@ -49,7 +49,7 @@ GOOGLE_API_KEY=AIza...
 # 선택사항 (트레이싱)
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_HOST=https://us.cloud.langfuse.com
+LANGFUSE_HOST=http://localhost:3000  # self-hosted LangFuse
 ```
 
 **주의사항:**

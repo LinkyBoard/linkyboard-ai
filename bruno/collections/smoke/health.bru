@@ -1,0 +1,14 @@
+meta {
+  name: "Health Check"
+  type: "http"
+  seq: 1
+}
+
+request {
+  method: "GET"
+  url: "{{baseUrl}}/health"
+
+  headers {
+    Accept: "application/json"
+  }
+}

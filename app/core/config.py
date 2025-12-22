@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     # LangFuse Observability
     langfuse_secret_key: str = "sk-lf-your-secret-key-here"
     langfuse_public_key: str = "pk-lf-your-public-key-here"
-    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_host: str = "http://localhost:3000"  # 기본값: self-hosted LangFuse
 
     # S3/MinIO Storage
     s3_endpoint: Optional[
