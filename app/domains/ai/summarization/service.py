@@ -324,7 +324,7 @@ class SummarizationService:
     async def summarize_webpage(
         self,
         url: str,
-        html_content: str,
+        html_content: Optional[str],
         user_id: int,
         tag_count: int = 5,
         refresh: bool = False,
@@ -343,6 +343,13 @@ class SummarizationService:
         - 캐시 저장 (TTL 30일)
         5. 개인화 추천 적용
 
+        Args:
+            url: 웹페이지 URL
+            html_content: HTML 콘텐츠 (None인 경우 URL에서 직접 가져옴)
+            user_id: 사용자 ID
+            tag_count: 태그 개수
+            refresh: 캐시 갱신 여부
+
         Returns:
             {
                 "content_hash": str,
@@ -360,6 +367,18 @@ class SummarizationService:
                 https://github.com/Glitch-Jar/LLM-EYES
         """
         cache_key = parsers.calculate_content_hash(url)
+
+        # HTML 콘텐츠가 없으면 URL에서 직접 가져오기
+        if html_content is None:
+            logger.info(
+                "HTML content not provided, fetching from URL",
+                extra={
+                    "url": url,
+                    "user_id": user_id,
+                    "request_id": get_request_id(),
+                },
+            )
+            html_content = await parsers.fetch_html_from_url(url)
 
         extracted_text, _ = await self._prepare_text_and_strategy(html_content)
         current_content_hash = parsers.calculate_content_hash(extracted_text)

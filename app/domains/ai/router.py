@@ -3,6 +3,8 @@
 AI 도메인 관련 API 엔드포인트입니다.
 """
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,16 +50,27 @@ def get_search_service(
 async def summarize_webpage(
     url: str = Form(...),
     user_id: int = Form(...),
-    html_file: UploadFile = File(...),
+    html_file: Optional[UploadFile] = File(None),
     tag_count: int = Form(5),
     refresh: bool = Form(False),
     summarization_service: SummarizationService = Depends(
         get_summarization_service
     ),
 ):
-    """웹페이지 요약 생성"""
-    html_content = await html_file.read()
-    html_str = html_content.decode("utf-8")
+    """웹페이지 요약 생성
+
+    Args:
+        url: 웹페이지 URL
+        user_id: 사용자 ID
+        html_file: HTML 파일 (옵션). 제공되지 않으면 URL에서 직접 가져옴
+        tag_count: 태그 개수
+        refresh: 캐시 갱신 여부
+    """
+    html_str = None
+    if html_file:
+        # HTML 파일이 제공된 경우
+        html_content = await html_file.read()
+        html_str = html_content.decode("utf-8")
 
     result = await summarization_service.summarize_webpage(
         url=url,

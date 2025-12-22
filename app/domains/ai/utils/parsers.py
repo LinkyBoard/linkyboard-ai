@@ -7,6 +7,7 @@ import hashlib
 import re
 from typing import Union, cast
 
+import httpx
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -26,6 +27,54 @@ from app.domains.ai.exceptions import (
 )
 
 logger = get_logger(__name__)
+
+
+async def fetch_html_from_url(url: str, timeout: float = 30.0) -> str:
+    """URL에서 HTML 콘텐츠 가져오기
+
+    Args:
+        url: 가져올 웹페이지 URL
+        timeout: 요청 타임아웃 (초, 기본: 30.0)
+
+    Returns:
+        str: HTML 콘텐츠
+
+    Raises:
+        HTMLParseException: HTML 가져오기 실패 시
+    """
+    try:
+        async with httpx.AsyncClient(
+            timeout=timeout, follow_redirects=True
+        ) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+
+            # 인코딩 감지 및 디코딩
+            html_content: str
+            if response.encoding:
+                html_content = str(response.text)
+            else:
+                # 인코딩이 감지되지 않으면 UTF-8로 시도
+                html_content = response.content.decode(
+                    "utf-8", errors="replace"
+                )
+
+            logger.info(
+                f"Fetched HTML from {url} ({len(html_content)} characters)"
+            )
+            return html_content
+
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error fetching {url}: {e.response.status_code}")
+        raise HTMLParseException(
+            detail_msg=f"URL에서 HTML을 가져올 수 없습니다: HTTP {e.response.status_code}"
+        )
+    except httpx.TimeoutException:
+        logger.error(f"Timeout fetching {url}")
+        raise HTMLParseException(detail_msg=f"URL 요청 시간 초과: {url}")
+    except Exception as e:
+        logger.error(f"Failed to fetch HTML from {url}: {e}")
+        raise HTMLParseException(detail_msg=f"URL에서 HTML 가져오기 실패: {str(e)}")
 
 
 def extract_text_from_html(html_content: str) -> str:
