@@ -81,9 +81,7 @@ async def create_draft(
         ],
         stream=request.stream,
         verbose=request.verbose,
-        metadata={
-            "model_alias": request.model_alias,
-        },
+        metadata={},
     )
 
     if request.stream:

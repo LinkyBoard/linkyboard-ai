@@ -173,26 +173,98 @@ Stage 3 (순차):
 
 ## 4. 모델 선택 전략
 
-### 4.1 기본 전략
+### 4.1 단계별 구현 로드맵
 
-- **에이전트별 기본 모델 고정** (서비스 설정)
-- **사용자 오버라이드 가능** (`model_preferences` 옵션)
-- **동적 선택은 Phase 2**로 연기
+모델 선택 기능은 3단계로 점진적으로 구현됩니다:
 
-### 4.2 사용자 오버라이드
+| 단계 | 설명 | 구현 시점 |
+| ------ | ------ | ---------- |
+| **Stage 1** | 서버 설정 고정 모델만 사용, `model_alias` 옵션 무시 | Phase 1.0 (현재) |
+| **Stage 2** | 허용 모델 목록 제공, `model_alias` 검증 추가 | Phase 1.5 |
+| **Stage 3** | 에이전트별 모델 개별 지정 가능 | Phase 2 |
+
+### 4.2 Stage 1: 고정 모델 전략 (현재)
+
+**원칙:**
+
+- 모든 에이전트는 서버 설정(`app/core/llm/fallback.py`)에 정의된 기본 모델만 사용
+- Topics API의 `model_alias` 파라미터는 **선택 사항**이며, 제공되어도 **무시됨**
+- 클라이언트는 모델 선택 UI를 제공하지 않음
+
+**기본 모델 정의:**
+
+```python
+# app/core/llm/fallback.py
+FALLBACK_ORDER: dict[str, list[str]] = {
+    "light": ["claude-4.5-haiku", "gpt-4.1-mini", "gemini-2.0-flash"],
+    "standard": ["gpt-5-mini", "gpt-4.1", "claude-4.5-sonnet"],
+    "premium": ["gpt-5", "claude-4.5-opus"],
+    "search": ["pplx-70b-online", "pplx-online-mini"],
+    "embedding": ["text-embedding-3-large"],
+}
+```
+
+**에이전트 기본 티어:**
+
+- PlannerAgent, SummarizerAgent → `light` 티어 (Claude 4.5 Haiku 우선)
+- AnalyzerAgent, WriterAgent → `standard` 티어 (GPT-5 mini 우선)
+- ResearcherAgent → `search` 티어 (Perplexity)
+- ContentRagAgent → `embedding` 티어
+
+### 4.3 Stage 2: 모델 검증 (Phase 1.5 예정)
+
+**추가 사항:**
+
+1. `GET /api/v1/ai/models/available` API로 허용 모델 목록 제공
+2. `model_alias` 파라미터 검증:
+   - 허용 모델 목록에 없는 alias → `400 Bad Request`
+   - 사용 불가능한 모델 (`is_available=false`) → `400 Bad Request`
+3. 검증 통과 시 지정된 모델로 **전체 에이전트** 실행
+
+**검증 로직:**
+
+```python
+async def validate_model_alias(model_alias: Optional[str]) -> Optional[str]:
+    """모델 alias 검증 및 정규화"""
+    if not model_alias:
+        return None  # 기본 모델 사용
+
+    model = await model_catalog_repo.get(model_alias)
+    if not model:
+        raise InvalidModelAliasError(f"Unknown model alias: {model_alias}")
+    if not model.is_available:
+        raise InvalidModelAliasError(f"Model not available: {model_alias}")
+
+    return model.alias
+```
+
+### 4.4 Stage 3: 에이전트별 모델 선택 (Phase 2 예정)
+
+**확장 계획:**
+
+- 에이전트별로 개별 모델 지정 가능
+- Topics API 요청에 `agent_models` 필드 추가 (선택사항)
 
 ```json
 {
   "prompt": "분석해줘",
   "selected_contents": [...],
-  "model_preferences": {
+  "model_alias": "gpt-5-mini",  // 전체 기본 모델
+  "agent_models": {  // 에이전트별 오버라이드 (선택)
+    "summarizer": "claude-4.5-haiku",
     "analyzer": "claude-4.5-sonnet",
     "writer": "gpt-4.1"
   }
 }
 ```
 
-### 4.3 Fallback 순서
+**구현 고려사항:**
+
+- `agent_models` 미지정 시 `model_alias` 또는 서버 기본값 사용
+- 에이전트별 허용 모델 제한 (예: embedding 에이전트는 임베딩 모델만)
+- 동적 선택 로직은 Phase 2로 연기
+
+### 4.5 Fallback 순서
 
 | 티어 | 1순위 | 2순위 | 3순위 |
 |------|-------|-------|-------|
@@ -204,7 +276,9 @@ Stage 3 (순차):
 
 > **Note**: 임베딩은 모델별로 벡터 공간이 다르므로 Fallback 불가. 장애 시 에러 반환 또는 키워드 검색으로 대체.
 
-### 4.4 Fallback 로직
+### 4.6 Fallback 로직
+
+Stage 1/2에서는 티어별 Fallback 순서를 따릅니다:
 
 ```python
 async def call_with_fallback(tier: str, messages: list, **kwargs):
@@ -219,6 +293,8 @@ async def call_with_fallback(tier: str, messages: list, **kwargs):
 
     raise AllProvidersFailedError("모든 프로바이더 실패")
 ```
+
+> **Note**: Stage 2에서 사용자가 `model_alias`를 지정한 경우, 해당 모델만 사용하고 Fallback을 시도하지 않습니다.
 
 ---
 
@@ -778,3 +854,4 @@ tests:
 | 1.2 | 2025-12-04 | ContentRagAgent 추가, RAG 전용 SSE 이벤트(retrieval_result) 분리 |
 | 1.3 | 2025-12-04 | retrieval_mode 옵션 추가(사용자 입력 기반 RAG/웹 검색 제어) |
 | 1.4 | 2025-12-04 | draft 우선 개발(Phase 1.0), ask 후속(Phase 1.5)로 범위/테이블 정리 |
+| 1.5 | 2025-12-22 | 모델 선택 전략 3단계 로드맵 추가 (Stage 1: 고정 모델, Stage 2: 검증, Stage 3: 에이전트별 선택) |
