@@ -102,16 +102,15 @@ class SummarizationService:
             "cached": True,
         }
 
-    async def _prepare_transcript_and_strategy(
+    async def _prepare_subtitle_text_and_strategy(
         self,
-        url: str,
+        subtitle_content: str,
     ) -> tuple[str, Optional[object]]:
-        youtube_id = parsers.extract_youtube_video_id(url)
-        youtube_transcript = parsers.get_youtube_transcript(youtube_id)
+        extracted_text = parsers.parse_subtitle_file(subtitle_content)
         chunk_strategy = await self.embedding_service.get_chunk_strategy(
             content_type="youtube"
         )
-        return youtube_transcript, chunk_strategy
+        return extracted_text, chunk_strategy
 
     async def _prepare_text_and_strategy(
         self,
@@ -423,23 +422,23 @@ class SummarizationService:
         return self._to_schema_dict(summary_data)
 
     async def summarize_youtube(
-        self, url: str, user_id: int, tag_count: int = 5, refresh: bool = False
+        self,
+        url: str,
+        subtitle_content: Optional[str],
+        user_id: int,
+        tag_count: int = 5,
+        refresh: bool = False,
+        enable_stt: bool = False,
     ) -> dict:
         """유튜브 요약 생성
 
-        캐싱 로직:
-        1. content_hashs = SHA256(url)
-        2. 캐시 조회 (expires_at > now_utc())
-        3. content_hash 비교
-        4. 캐시 미스 or 변경 시:
-        - 자막 추출
-        - 자막이 없으면 음성 -> 텍스트 변환
-        - 텍스트 청크 분할
-        - 청크별 임베딩 생성
-        - LLM 요약 생성
-        - 태그/카테고리 후보 추출
-        - 캐시 저장 (TTL 30일)
-        5. 개인화 추천 적용
+        Args:
+            url: YouTube URL
+            subtitle_content: 자막 파일 내용 (None인 경우 STT 옵션 필요)
+            user_id: 사용자 ID
+            tag_count: 태그 개수
+            refresh: 캐시 갱신 여부
+            enable_stt: STT 활성화 여부 (자막 없을 때)
 
         Returns:
             {
@@ -453,10 +452,46 @@ class SummarizationService:
                 "cached": bool
             }
         """
+        # 자막 파일이 없을 때 처리
+        if subtitle_content is None:
+            if enable_stt:
+                # STT 기능 준비 중 안내
+                return {
+                    "content_hash": parsers.calculate_content_hash(url),
+                    "extracted_text": "",
+                    "summary": (
+                        "STT 기능은 현재 개발 중입니다. "
+                        "유튜브 영상의 음성을 자동으로 텍스트로 변환하는 "
+                        "기능이 곧 제공될 예정입니다."
+                    ),
+                    "tags": ["준비중"],
+                    "category": "기타",
+                    "candidate_tags": ["준비중", "STT", "음성인식"],
+                    "candidate_categories": ["기타"],
+                    "cached": False,
+                }
+            else:
+                # 자막 파일 업로드 안내
+                return {
+                    "content_hash": parsers.calculate_content_hash(url),
+                    "extracted_text": "",
+                    "summary": (
+                        "자막 파일을 업로드하면 영상 내용을 요약해 드립니다. "
+                        "SRT, VTT 형식의 자막 파일이나 "
+                        "일반 텍스트 파일을 업로드해 주세요."
+                    ),
+                    "tags": ["자막필요"],
+                    "category": "기타",
+                    "candidate_tags": ["자막필요", "업로드필요"],
+                    "candidate_categories": ["기타"],
+                    "cached": False,
+                }
 
         cache_key = parsers.calculate_content_hash(url)
 
-        extracted_text, _ = await self._prepare_transcript_and_strategy(url)
+        extracted_text, _ = await self._prepare_subtitle_text_and_strategy(
+            subtitle_content
+        )
         current_content_hash = parsers.calculate_content_hash(extracted_text)
 
         if refresh:
