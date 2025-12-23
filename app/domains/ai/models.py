@@ -8,6 +8,7 @@
 - UserTagUsage: 사용자 태그 사용 통계
 - Category: 카테고리 마스터 (개인화 추천용)
 - UserCategoryUsage: 사용자 카테고리 사용 통계
+- ModelCatalog: AI 모델 카탈로그 (가격 정보 및 WTU 가중치)
 
 주의:
 - Contents 테이블의 tags/category는 PostgreSQL ARRAY 타입 문자열
@@ -23,6 +24,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -400,4 +402,116 @@ class UserCategoryUsage(Base):
         return (
             f"<UserCategoryUsage(id={self.id}, user_id={self.user_id}, "
             f"category_id={self.category_id}, use_count={self.use_count})>"
+        )
+
+
+class ModelCatalog(Base):
+    """AI 모델 카탈로그
+
+    모델별 가격 정보와 WTU 가중치를 관리합니다.
+    """
+
+    __tablename__ = "model_catalog"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True
+    )
+    alias: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+        comment="모델 별칭 (gpt-4o-mini, claude-4.5-haiku)",
+    )
+    provider: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        index=True,
+        comment="제공자 (openai, anthropic, google, perplexity)",
+    )
+    model_name: Mapped[str] = mapped_column(
+        String(100), nullable=False, comment="실제 모델명"
+    )
+    model_type: Mapped[str] = mapped_column(
+        String(50),
+        default="llm",
+        nullable=False,
+        comment="모델 타입 (llm, embedding, search)",
+    )
+    description: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, comment="모델 설명"
+    )
+
+    # 가격 정보 (1M tokens 기준 USD)
+    input_price_per_1m: Mapped[float] = mapped_column(
+        Numeric(10, 4),
+        nullable=False,
+        comment="입력 토큰 1M당 가격 (USD)",
+    )
+    output_price_per_1m: Mapped[float] = mapped_column(
+        Numeric(10, 4),
+        nullable=False,
+        comment="출력 토큰 1M당 가격 (USD)",
+    )
+
+    # WTU 가중치 (입력/출력 분리, 기준 모델 대비)
+    input_wtu_multiplier: Mapped[float] = mapped_column(
+        Numeric(6, 2),
+        nullable=False,
+        server_default="1.00",
+        comment="입력 토큰 WTU 가중치 (기준 모델 = 1.00)",
+    )
+    output_wtu_multiplier: Mapped[float] = mapped_column(
+        Numeric(6, 2),
+        nullable=False,
+        server_default="1.00",
+        comment="출력 토큰 WTU 가중치 (기준 모델 = 1.00)",
+    )
+
+    max_context_tokens: Mapped[int] = mapped_column(
+        Integer, default=128000, nullable=False, comment="최대 컨텍스트 토큰"
+    )
+
+    # Fallback 설정
+    tier: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        index=True,
+        comment="LLM 티어 (light, standard, premium, search, embedding)",
+    )
+    fallback_priority: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="티어 내 fallback 우선순위 (낮을수록 먼저 시도, null은 fallback 미사용)",
+    )
+
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, comment="기본 모델 여부"
+    )
+    is_available: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+        index=True,
+        comment="사용 가능 여부",
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        comment="생성일시",
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        onupdate=func.now(),
+        nullable=True,
+        comment="수정일시",
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ModelCatalog(id={self.id}, alias={self.alias}, "
+            f"provider={self.provider}, "
+            f"input_wtu={self.input_wtu_multiplier}, "
+            f"output_wtu={self.output_wtu_multiplier})>"
         )
