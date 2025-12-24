@@ -7,6 +7,7 @@
 import os
 from typing import AsyncGenerator, Optional, cast
 
+import litellm
 from litellm import acompletion, aembedding
 
 from app.core.config import settings
@@ -26,6 +27,9 @@ def _setup_api_keys() -> None:
 
 # 모듈 로드 시 API 키 설정
 _setup_api_keys()
+
+# LiteLLM 설정: 모델이 지원하지 않는 파라미터 자동 제거
+litellm.drop_params = True
 
 
 async def acompletion_raw(

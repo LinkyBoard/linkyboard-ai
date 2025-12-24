@@ -50,6 +50,7 @@ class SummarizerAgent(BaseAgent):
         result = await call_with_fallback(
             tier=self.tier,
             messages=messages,
+            session=context.session,
             temperature=0.3,  # 요약은 낮은 온도
         )
 

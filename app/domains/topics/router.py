@@ -9,7 +9,9 @@ from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import get_db
 from app.core.dependencies import verify_internal_api_key
 from app.core.schemas import APIResponse, create_response
 from app.domains.topics.agents import (
@@ -36,9 +38,11 @@ from app.domains.topics.schemas import (
 router = APIRouter()
 
 
-def get_topics_orchestrator() -> TopicsOrchestrator:
+def get_topics_orchestrator(
+    session: AsyncSession = Depends(get_db),
+) -> TopicsOrchestrator:
     """요청마다 새로운 오케스트레이터 인스턴스를 생성"""
-    executor = OrchestrationExecutor()
+    executor = OrchestrationExecutor(session=session)
     executor.register_agent(SummarizerAgent())
     executor.register_agent(ResearcherAgent())
     executor.register_agent(WriterAgent())

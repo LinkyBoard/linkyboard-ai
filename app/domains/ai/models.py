@@ -212,6 +212,16 @@ class SummaryCache(Base):
     chunk_embeddings: Mapped[Optional[dict]] = mapped_column(
         JSONB, nullable=True, comment="청크별 임베딩 정보 (JSONB)"
     )
+    total_input_tokens: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="원본 생성 시 사용된 총 입력 토큰",
+    )
+    total_output_tokens: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="원본 생성 시 사용된 총 출력 토큰",
+    )
     wtu_cost: Mapped[Optional[int]] = mapped_column(
         Integer,
         nullable=True,

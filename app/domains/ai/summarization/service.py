@@ -100,6 +100,11 @@ class SummarizationService:
             "candidate_tags": candidate_tags,
             "candidate_categories": candidate_categories,
             "cached": True,
+            "usage": {
+                "total_input_tokens": cached.total_input_tokens,
+                "total_output_tokens": cached.total_output_tokens,
+                "total_wtu": cached.wtu_cost,
+            },
         }
 
     async def _prepare_subtitle_text_and_strategy(
@@ -167,6 +172,7 @@ class SummarizationService:
                         content=summary_prompt.format(**prompt_data),
                     )
                 ],
+                session=self.session,
                 temperature=0.3,
                 max_tokens=max_summary_tokens,
             )
@@ -181,6 +187,7 @@ class SummarizationService:
                         ),
                     )
                 ],
+                session=self.session,
                 temperature=0.2,
                 max_tokens=200,
             )
@@ -199,6 +206,7 @@ class SummarizationService:
                         ),
                     )
                 ],
+                session=self.session,
                 temperature=0.2,
                 max_tokens=150,
             )
@@ -236,7 +244,7 @@ class SummarizationService:
         pipeline_result: SummaryPipelineResult,
         user_id: int,
         tag_count: int,
-    ) -> tuple[dict, int]:
+    ) -> tuple[dict, int, int, int]:
         """요약 데이터 구성
 
         Args:
@@ -271,7 +279,19 @@ class SummarizationService:
         )
 
         # WTU 계산 (SummaryPipelineResult의 메서드 활용)
-        total_wtu = pipeline_result.calculate_total_wtu()
+        total_wtu = await pipeline_result.calculate_total_wtu(self.session)
+
+        # 토큰 합산
+        total_input = (
+            pipeline_result.summary.input_tokens
+            + pipeline_result.tags.input_tokens
+            + pipeline_result.category.input_tokens
+        )
+        total_output = (
+            pipeline_result.summary.output_tokens
+            + pipeline_result.tags.output_tokens
+            + pipeline_result.category.output_tokens
+        )
 
         content_hash = parsers.calculate_content_hash(extracted_text)
         summary_data = {
@@ -283,14 +303,21 @@ class SummarizationService:
             "candidate_tags": candidate_tags,
             "candidate_categories": candidate_categories,
             "cached": False,
+            "usage": {
+                "total_input_tokens": total_input,
+                "total_output_tokens": total_output,
+                "total_wtu": total_wtu,
+            },
         }
-        return summary_data, total_wtu
+        return summary_data, total_wtu, total_input, total_output
 
     async def _save_cache(
         self,
         cache_key: str,
         summary_data: dict,
-        total_tokens: int,
+        total_wtu: int,
+        total_input_tokens: int,
+        total_output_tokens: int,
         cache_type: str = "webpage",
     ) -> None:
         # 기존 동일 cache_key/type 캐시가 있으면 교체 (UPSERT 대용)
@@ -309,8 +336,10 @@ class SummarizationService:
             summary=summary_data["summary"],
             candidate_tags=summary_data["candidate_tags"],
             candidate_categories=summary_data["candidate_categories"],
+            total_input_tokens=total_input_tokens,
+            total_output_tokens=total_output_tokens,
+            wtu_cost=total_wtu,
             expires_at=now_utc() + timedelta(days=30),
-            wtu_cost=total_tokens,
         )
         self.session.add(summary_cache)
         await self.session.flush()
@@ -406,7 +435,12 @@ class SummarizationService:
                 return self._to_schema_dict(cached_summary)
 
         pipeline_result = await self._run_llm_pipeline(extracted_text)
-        summary_data, total_wtu = await self._build_summary_data(
+        (
+            summary_data,
+            total_wtu,
+            total_input,
+            total_output,
+        ) = await self._build_summary_data(
             extracted_text,
             pipeline_result,
             user_id,
@@ -415,7 +449,9 @@ class SummarizationService:
         await self._save_cache(
             cache_key=cache_key,
             summary_data=summary_data,
-            total_tokens=total_wtu,
+            total_wtu=total_wtu,
+            total_input_tokens=total_input,
+            total_output_tokens=total_output,
             cache_type="webpage",
         )
 
@@ -524,7 +560,12 @@ class SummarizationService:
                 "transcript": extracted_text,
             },
         )
-        summary_data, total_wtu = await self._build_summary_data(
+        (
+            summary_data,
+            total_wtu,
+            total_input,
+            total_output,
+        ) = await self._build_summary_data(
             extracted_text,
             pipeline_result,
             user_id,
@@ -533,7 +574,9 @@ class SummarizationService:
         await self._save_cache(
             cache_key=cache_key,
             summary_data=summary_data,
-            total_tokens=total_wtu,
+            total_wtu=total_wtu,
+            total_input_tokens=total_input,
+            total_output_tokens=total_output,
             cache_type="youtube",
         )
 
@@ -604,7 +647,12 @@ class SummarizationService:
             summary_prompt=prompts.PDF_SUMMARY_PROMPT,
             max_summary_tokens=500,
         )
-        summary_data, total_wtu = await self._build_summary_data(
+        (
+            summary_data,
+            total_wtu,
+            total_input,
+            total_output,
+        ) = await self._build_summary_data(
             extracted_text,
             pipeline_result,
             user_id,
@@ -613,7 +661,9 @@ class SummarizationService:
         await self._save_cache(
             cache_key=cache_key,
             summary_data=summary_data,
-            total_tokens=total_wtu,
+            total_wtu=total_wtu,
+            total_input_tokens=total_input,
+            total_output_tokens=total_output,
             cache_type="pdf",
         )
 

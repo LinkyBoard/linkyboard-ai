@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.llm.types import LLMResult
 from app.core.llm.wtu import calculate_wtu_from_tokens
 
@@ -25,8 +27,8 @@ class SummaryPipelineResult:
             category=category_llm_result
         )
 
-        # WTU 계산
-        total_wtu = result.calculate_total_wtu()
+        # WTU 계산 (async)
+        total_wtu = await result.calculate_total_wtu(session)
 
         # 개별 접근
         summary_text = result.summary.content
@@ -37,19 +39,25 @@ class SummaryPipelineResult:
     tags: LLMResult
     category: LLMResult
 
-    def calculate_total_wtu(self) -> int:
+    async def calculate_total_wtu(self, session: AsyncSession) -> int:
         """전체 WTU 계산
 
         3개 LLM 호출(요약, 태그, 카테고리)의 WTU를 합산합니다.
+        모델별 입출력 토큰 가중치를 DB에서 조회하여 정확히 계산합니다.
+
+        Args:
+            session: DB 세션
 
         Returns:
             int: 총 WTU (Weighted Token Unit)
         """
-        return sum(
-            [
-                calculate_wtu_from_tokens(
-                    result.input_tokens, result.output_tokens, result.model
-                )
-                for result in [self.summary, self.tags, self.category]
-            ]
-        )
+        total = 0
+        for result in [self.summary, self.tags, self.category]:
+            wtu = await calculate_wtu_from_tokens(
+                result.input_tokens,
+                result.output_tokens,
+                result.model,
+                session,
+            )
+            total += wtu
+        return total

@@ -220,7 +220,9 @@ class PersonalizationRepository:
         # 새 태그 생성
         if embedding_vector is None:
             try:
-                embedding_vector = await create_embedding(tag_name)
+                embedding_vector = await create_embedding(
+                    tag_name, self.session
+                )
             except Exception:
                 # 임베딩 실패 시 None으로 저장 (나중에 재계산)
                 embedding_vector = None
@@ -262,7 +264,9 @@ class PersonalizationRepository:
         # 새 카테고리 생성
         if embedding_vector is None:
             try:
-                embedding_vector = await create_embedding(category_name)
+                embedding_vector = await create_embedding(
+                    category_name, self.session
+                )
             except Exception:
                 embedding_vector = None
 

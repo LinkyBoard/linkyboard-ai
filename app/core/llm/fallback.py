@@ -82,24 +82,26 @@ async def call_with_fallback(
 
     for model_info in models:
         model_alias = model_info.alias
+        model_name = model_info.model_name
         try:
             logger.info(
-                f"Attempting LLM call with tier={tier}, model={model_alias}"
+                f"Attempting LLM call with tier={tier}, "
+                f"alias={model_alias}, model={model_name}"
             )
             result = await acompletion_raw(
-                model=model_alias,
+                model=model_name,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 **kwargs,
             )
-            logger.info(f"LLM call succeeded with model={model_alias}")
+            logger.info(f"LLM call succeeded with model={model_name}")
             return result
 
         except LLMProviderError as e:
             attempted_models.append(model_alias)
             logger.warning(
-                f"Model {model_alias} failed (tier={tier}): "
+                f"Model {model_alias} ({model_name}) failed (tier={tier}): "
                 f"{e.detail_info['error']}. Trying next model..."
             )
             continue
@@ -167,13 +169,15 @@ async def stream_with_fallback(
 
     for model_info in models:
         model_alias = model_info.alias
+        model_name = model_info.model_name
         try:
             logger.info(
-                f"Attempting streaming: tier={tier}, model={model_alias}"
+                f"Attempting streaming: tier={tier}, "
+                f"alias={model_alias}, model={model_name}"
             )
 
             async for chunk in astream_completion_raw(
-                model=model_alias,
+                model=model_name,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -182,19 +186,19 @@ async def stream_with_fallback(
                 # 첫 번째 청크를 성공적으로 받음 - 스트리밍 시작
                 if not streaming_started:
                     streaming_started = True
-                    logger.info(f"Streaming started with model={model_alias}")
+                    logger.info(f"Streaming started with model={model_name}")
 
                 yield chunk
 
             # 스트리밍 성공 완료
-            logger.info(f"Streaming completed with model={model_alias}")
+            logger.info(f"Streaming completed with model={model_name}")
             return
 
         except LLMProviderError as e:
             # 스트리밍이 시작된 후 에러: fallback 없이 즉시 종료
             if streaming_started:
                 logger.error(
-                    f"Streaming failed mid-stream with model={model_alias}: "
+                    f"Streaming failed mid-stream with model={model_name}: "
                     f"{e.detail_info['error']}. "
                     "Cannot fallback - chunks already sent."
                 )
@@ -203,8 +207,9 @@ async def stream_with_fallback(
             # 스트리밍 시작 전 에러: fallback 시도
             attempted_models.append(model_alias)
             logger.warning(
-                f"Model {model_alias} failed before streaming (tier={tier}): "
-                f"{e.detail_info['error']}. Trying next model..."
+                f"Model {model_alias} ({model_name}) failed before "
+                f"streaming (tier={tier}): {e.detail_info['error']}. "
+                f"Trying next model..."
             )
             continue
 
@@ -248,6 +253,10 @@ async def create_embedding(
         )
 
     # 첫 번째 모델 사용 (embedding은 fallback 없음)
-    model_alias = models[0].alias
-    logger.info(f"Creating embedding with model={model_alias}")
-    return await aembedding_raw(model=model_alias, input_text=input_text)
+    model_info = models[0]
+    model_name = model_info.model_name
+    logger.info(
+        f"Creating embedding with alias={model_info.alias}, "
+        f"model={model_name}"
+    )
+    return await aembedding_raw(model=model_name, input_text=input_text)

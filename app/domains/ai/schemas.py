@@ -34,6 +34,14 @@ class PDFSummarizeRequest(BaseModel):
     refresh: bool = Field(False)
 
 
+class UsageInfo(BaseModel):
+    """AI 사용량 정보"""
+
+    total_input_tokens: int = Field(..., description="총 입력 토큰")
+    total_output_tokens: int = Field(..., description="총 출력 토큰")
+    total_wtu: int = Field(..., description="총 WTU (Weighted Token Unit)")
+
+
 class SummarizeResponse(BaseModel):
     """요약 응답"""
 
@@ -45,6 +53,7 @@ class SummarizeResponse(BaseModel):
     candidate_tags: list[str]
     candidate_categories: list[str]
     cached: bool
+    usage: UsageInfo = Field(..., description="토큰 사용량 정보")
 
 
 class SearchRequest(BaseModel):

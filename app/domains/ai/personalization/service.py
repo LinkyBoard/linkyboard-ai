@@ -110,7 +110,9 @@ class PersonalizationService:
 
         # 후보 태그 임베딩 생성
         try:
-            candidate_embedding = await create_embedding(candidate_tag)
+            candidate_embedding = await create_embedding(
+                candidate_tag, self.session
+            )
         except Exception as e:
             logger.warning(
                 f"Failed to create embedding for tag '{candidate_tag}': {e}"

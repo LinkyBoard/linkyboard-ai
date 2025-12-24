@@ -100,7 +100,7 @@ class EmbeddingService:
             EmbeddingFailedException: 임베딩 생성 실패 시
         """
         try:
-            vector = await create_embedding(text)
+            vector = await create_embedding(text, self.session)
             return vector
         except Exception as e:
             logger.error(f"Embedding creation failed: {e}")

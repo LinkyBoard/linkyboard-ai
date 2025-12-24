@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.llm.wtu import calculate_wtu_from_tokens
 from app.core.logging import get_logger
 from app.domains.topics.orchestration.models import (
@@ -35,8 +37,13 @@ logger = get_logger(__name__)
 class OrchestrationExecutor:
     """ExecutionPlan을 실제로 수행하는 Executor 기본 구현"""
 
-    def __init__(self, agents: dict[str, BaseAgent] | None = None):
+    def __init__(
+        self,
+        agents: dict[str, BaseAgent] | None = None,
+        session: AsyncSession | None = None,
+    ):
         self._agents = agents or {}
+        self._session = session
 
     def register_agent(self, agent: BaseAgent) -> None:
         """동적으로 에이전트를 등록할 수 있도록 허용"""
@@ -88,7 +95,7 @@ class OrchestrationExecutor:
         )
 
         # Usage/WTU 계산
-        usage = self._calculate_usage(results)
+        usage = await self._calculate_usage(results)
 
         logger.info(
             "Orchestration execution finished",
@@ -138,6 +145,7 @@ class OrchestrationExecutor:
                 request_id=context.request_id,
                 user_id=context.user_id,
                 prompt=context.prompt or "",
+                session=self._session,
                 additional_data={
                     "selected_contents": context.selected_contents,
                     "metadata": context.metadata,
@@ -189,7 +197,9 @@ class OrchestrationExecutor:
 
         await event_callback(StreamEvent(event=event_name, data=payload))
 
-    def _calculate_usage(self, results: list[AgentResult]) -> UsageSummary:
+    async def _calculate_usage(
+        self, results: list[AgentResult]
+    ) -> UsageSummary:
         """에이전트별 사용량을 집계하여 UsageSummary 생성
 
         Args:
@@ -207,12 +217,19 @@ class OrchestrationExecutor:
             if not result.success or result.skipped:
                 continue
 
-            # 에이전트별 WTU 계산
-            wtu = calculate_wtu_from_tokens(
-                input_tokens=result.input_tokens,
-                output_tokens=result.output_tokens,
-                model=result.model or "unknown",
-            )
+            # 에이전트별 WTU 계산 (DB 기반)
+            if self._session:
+                wtu = await calculate_wtu_from_tokens(
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens,
+                    model=result.model or "claude-4.5-haiku",
+                    session=self._session,
+                )
+            else:
+                # Fallback: 세션 없으면 간단 계산
+                logger.warning("No session for WTU calc, using simple")
+                wtu = (result.input_tokens + result.output_tokens) // 1000
+                wtu = max(1, wtu)
 
             # 합산
             total_input_tokens += result.input_tokens

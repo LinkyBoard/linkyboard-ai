@@ -10,17 +10,23 @@ Note: AgentContext는 원래 agents/base.py에 있었으나, 순환 참조 방�
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Awaitable, Callable, Literal
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class AgentContext(BaseModel):
     """에이전트 실행 컨텍스트"""
 
+    model_config = {"arbitrary_types_allowed": True}
+
     request_id: str
     user_id: int
     prompt: str
+    session: "AsyncSession"
     additional_data: dict[str, Any] = Field(default_factory=dict)
 
 
