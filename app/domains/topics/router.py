@@ -173,7 +173,6 @@ def _map_usage_summary(usage: UsageSummary | None) -> TopicsUsage | None:
         total_input_tokens=usage.total_input_tokens,
         total_output_tokens=usage.total_output_tokens,
         total_wtu=usage.total_wtu,
-        agents=usage.agents,
     )
 
 

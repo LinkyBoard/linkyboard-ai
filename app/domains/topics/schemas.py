@@ -22,10 +22,9 @@ class SelectedContent(BaseModel):
 class TopicsUsage(BaseModel):
     """AI usage/WTU 정보"""
 
-    total_input_tokens: int = 0
-    total_output_tokens: int = 0
-    total_wtu: int = 0
-    agents: dict[str, Any] = Field(default_factory=dict)
+    total_input_tokens: int = Field(..., description="총 입력 토큰")
+    total_output_tokens: int = Field(..., description="총 출력 토큰")
+    total_wtu: int = Field(..., description="총 WTU (Weighted Token Unit)")
 
 
 class TopicsAskResponse(BaseModel):
