@@ -9,6 +9,7 @@
 - Category: 카테고리 마스터 (개인화 추천용)
 - UserCategoryUsage: 사용자 카테고리 사용 통계
 - ModelCatalog: AI 모델 카탈로그 (가격 정보 및 WTU 가중치)
+- ModelCallLog: LLM 호출 로그 (헬스 모니터링용)
 
 주의:
 - Contents 테이블의 tags/category는 PostgreSQL ARRAY 타입 문자열
@@ -524,4 +525,92 @@ class ModelCatalog(Base):
             f"provider={self.provider}, "
             f"input_wtu={self.input_wtu_multiplier}, "
             f"output_wtu={self.output_wtu_multiplier})>"
+        )
+
+
+class ModelCallLog(Base):
+    """LLM 호출 로그
+
+    모든 LLM 호출을 기록하여 모델 헬스 모니터링과 fallback 추적에 사용됩니다.
+
+    헬스 모니터링:
+    - 모델별 성공률, 실패율
+    - Fallback 발생 빈도
+    - 평균 응답 시간 추적
+    - 에러 패턴 분석
+    """
+
+    __tablename__ = "model_call_logs"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True
+    )
+    model_alias: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+        comment="시도한 모델 별칭",
+    )
+    tier: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        index=True,
+        comment="LLM 티어 (light, standard, premium, search, embedding)",
+    )
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        index=True,
+        comment="호출 상태 (success, failed, fallback)",
+    )
+    error_type: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        index=True,
+        comment="에러 타입 (RateLimitError, InsufficientCredits, etc)",
+    )
+    error_message: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="에러 메시지",
+    )
+    fallback_to: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Fallback된 모델 별칭 (fallback 발생 시)",
+    )
+    input_tokens: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="입력 토큰 수",
+    )
+    output_tokens: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="출력 토큰 수",
+    )
+    response_time_ms: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="응답 시간 (밀리초)",
+    )
+    request_metadata: Mapped[Optional[dict]] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="요청 메타데이터 (user_id, api_endpoint, etc)",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+        comment="호출 일시",
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ModelCallLog(id={self.id}, "
+            f"model={self.model_alias}, "
+            f"status={self.status}, "
+            f"tier={self.tier})>"
         )

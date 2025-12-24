@@ -4,6 +4,7 @@
 Fallback 순서는 model_catalog 테이블에서 동적으로 조회합니다.
 """
 
+import time
 from typing import AsyncGenerator, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,9 +22,59 @@ from app.core.llm.types import (
     LLMTier,
 )
 from app.core.logging import get_logger
+from app.domains.ai.models import ModelCallLog
 from app.domains.ai.repository import AIRepository
 
 logger = get_logger(__name__)
+
+
+async def _log_model_call(
+    session: AsyncSession,
+    model_alias: str,
+    tier: str,
+    status: str,
+    error_type: Optional[str] = None,
+    error_message: Optional[str] = None,
+    fallback_to: Optional[str] = None,
+    input_tokens: Optional[int] = None,
+    output_tokens: Optional[int] = None,
+    response_time_ms: Optional[int] = None,
+    request_metadata: Optional[dict] = None,
+) -> None:
+    """LLM 호출 로그 기록 (비동기)
+
+    Args:
+        session: DB 세션
+        model_alias: 시도한 모델 별칭
+        tier: LLM 티어
+        status: 호출 상태 (success, failed, fallback)
+        error_type: 에러 타입 (optional)
+        error_message: 에러 메시지 (optional)
+        fallback_to: Fallback된 모델 (optional)
+        input_tokens: 입력 토큰 수 (optional)
+        output_tokens: 출력 토큰 수 (optional)
+        response_time_ms: 응답 시간 (밀리초, optional)
+        request_metadata: 요청 메타데이터 (optional)
+    """
+    try:
+        log_entry = ModelCallLog(
+            model_alias=model_alias,
+            tier=tier,
+            status=status,
+            error_type=error_type,
+            error_message=error_message,
+            fallback_to=fallback_to,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            response_time_ms=response_time_ms,
+            request_metadata=request_metadata,
+        )
+        session.add(log_entry)
+        await session.commit()
+    except Exception as e:
+        # 로깅 실패가 메인 로직에 영향을 주지 않도록 예외 처리
+        logger.error(f"Failed to log model call: {e}")
+        await session.rollback()
 
 
 async def call_with_fallback(
@@ -80,9 +131,11 @@ async def call_with_fallback(
 
     attempted_models = []
 
-    for model_info in models:
+    for i, model_info in enumerate(models):
         model_alias = model_info.alias
         model_name = model_info.model_name
+        start_time = time.time()
+
         try:
             logger.info(
                 f"Attempting LLM call with tier={tier}, "
@@ -95,11 +148,43 @@ async def call_with_fallback(
                 max_tokens=max_tokens,
                 **kwargs,
             )
+            response_time_ms = int((time.time() - start_time) * 1000)
+
+            # 성공 로그
+            await _log_model_call(
+                session=session,
+                model_alias=model_alias,
+                tier=tier.value,
+                status="success",
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                response_time_ms=response_time_ms,
+            )
+
             logger.info(f"LLM call succeeded with model={model_name}")
             return result
 
         except LLMProviderError as e:
+            response_time_ms = int((time.time() - start_time) * 1000)
             attempted_models.append(model_alias)
+
+            # 다음 시도할 모델이 있는지 확인
+            fallback_model = None
+            if i + 1 < len(models):
+                fallback_model = models[i + 1].alias
+
+            # 실패/Fallback 로그
+            await _log_model_call(
+                session=session,
+                model_alias=model_alias,
+                tier=tier.value,
+                status="fallback" if fallback_model else "failed",
+                error_type=type(e).__name__,
+                error_message=str(e.detail_info.get("error", str(e))),
+                fallback_to=fallback_model,
+                response_time_ms=response_time_ms,
+            )
+
             logger.warning(
                 f"Model {model_alias} ({model_name}) failed (tier={tier}): "
                 f"{e.detail_info['error']}. Trying next model..."

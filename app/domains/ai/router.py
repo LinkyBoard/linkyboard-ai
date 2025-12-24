@@ -16,10 +16,17 @@ from app.core.schemas import (
     create_list_response,
     create_response,
 )
+from app.domains.ai.repository import AIRepository
 from app.domains.ai.schemas import (
+    FallbackFlow,
+    FallbackFlowsResponse,
+    ModelHealthResponse,
+    ModelHealthStats,
     SearchRequest,
     SearchResultResponse,
     SummarizeResponse,
+    TierHealthResponse,
+    TierHealthStats,
 )
 from app.domains.ai.search.service import AISearchService
 from app.domains.ai.summarization.service import SummarizationService
@@ -191,3 +198,123 @@ async def search_contents(
         page=request.page,
         size=request.size,
     )
+
+
+# 모델 헬스 모니터링 API
+
+
+@router.get(
+    "/health/model",
+    response_model=ModelHealthResponse,
+    dependencies=[Depends(verify_internal_api_key)],
+)
+async def get_model_health(
+    model_alias: Optional[str] = None,
+    hours: int = 24,
+    session: AsyncSession = Depends(get_db),
+) -> ModelHealthResponse:
+    """모델 헬스 통계 조회
+
+    Args:
+        model_alias: 특정 모델 별칭 (None이면 전체)
+        hours: 조회 시간 범위 (기본 24시간)
+        session: DB 세션
+
+    Returns:
+        ModelHealthResponse: 모델 헬스 통계
+
+    Example::
+
+        # 특정 모델 조회
+        GET /api/v1/ai/health/model?model_alias=claude-4.5-haiku&hours=24
+
+        # 전체 모델 조회
+        GET /api/v1/ai/health/model?hours=48
+    """
+    repo = AIRepository(session)
+    stats = await repo.get_model_health_stats(
+        model_alias=model_alias, hours=hours
+    )
+
+    return ModelHealthResponse(
+        success=True,
+        data=ModelHealthStats(model_alias=model_alias, **stats),
+    )
+
+
+@router.get(
+    "/health/tier/{tier}",
+    response_model=TierHealthResponse,
+    dependencies=[Depends(verify_internal_api_key)],
+)
+async def get_tier_health(
+    tier: str,
+    hours: int = 24,
+    session: AsyncSession = Depends(get_db),
+) -> TierHealthResponse:
+    """티어별 헬스 통계 조회
+
+    Args:
+        tier: LLM 티어 (light, standard, premium, search, embedding)
+        hours: 조회 시간 범위 (기본 24시간)
+        session: DB 세션
+
+    Returns:
+        TierHealthResponse: 티어 헬스 통계
+
+    Example::
+
+        GET /api/v1/ai/health/tier/light?hours=24
+    """
+    repo = AIRepository(session)
+    stats = await repo.get_tier_health_stats(tier=tier, hours=hours)
+
+    return TierHealthResponse(success=True, data=TierHealthStats(**stats))
+
+
+@router.get(
+    "/health/fallback-flows",
+    response_model=FallbackFlowsResponse,
+    dependencies=[Depends(verify_internal_api_key)],
+)
+async def get_fallback_flows(
+    hours: int = 24,
+    session: AsyncSession = Depends(get_db),
+) -> FallbackFlowsResponse:
+    """Fallback 흐름 조회
+
+    Args:
+        hours: 조회 시간 범위 (기본 24시간)
+        session: DB 세션
+
+    Returns:
+        FallbackFlowsResponse: Fallback 흐름 리스트
+
+    Example::
+
+        GET /api/v1/ai/health/fallback-flows?hours=24
+
+        Response:
+        {
+            "success": true,
+            "data": [
+                {
+                    "source_model": "claude-4.5-haiku",
+                    "fallback_to": "gemini-2.0-flash",
+                    "count": 15,
+                    "error_types": {
+                        "InsufficientCredits": 10,
+                        "RateLimitError": 5
+                    }
+                },
+                ...
+            ]
+        }
+    """
+    repo = AIRepository(session)
+    flows = await repo.get_fallback_flows(hours=hours)
+
+    # dict → FallbackFlow 변환
+    flow_objects = [FallbackFlow(**flow) for flow in flows]
+
+    return FallbackFlowsResponse(success=True, data=flow_objects)

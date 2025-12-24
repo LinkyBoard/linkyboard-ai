@@ -55,7 +55,7 @@ class AISearchService:
         if mode == "vector":
             # 쿼리 임베딩 생성
             logger.info(f"Creating embedding for query: '{query}'")
-            query_embedding = await create_embedding(query)
+            query_embedding = await create_embedding(query, self.session)
 
             results, total = await self.repository.vector_search(
                 query_embedding=query_embedding,
@@ -84,7 +84,7 @@ class AISearchService:
         elif mode == "hybrid":
             # 쿼리 임베딩 생성
             logger.info(f"Creating embedding for query: '{query}'")
-            query_embedding = await create_embedding(query)
+            query_embedding = await create_embedding(query, self.session)
 
             results, total = await self.repository.hybrid_search(
                 query=query,
