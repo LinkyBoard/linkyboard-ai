@@ -57,6 +57,71 @@ class S3Client:
             },
         )
 
+        # 버킷 자동 생성 (개발 환경)
+        self._ensure_bucket_exists()
+
+    def _ensure_bucket_exists(self) -> None:
+        """버킷이 존재하는지 확인하고, 없으면 생성합니다."""
+        try:
+            # 버킷 존재 확인
+            self.client.head_bucket(Bucket=self.bucket)
+            logger.info(
+                "S3 bucket exists",
+                extra={"bucket": self.bucket},
+            )
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+
+            if error_code in ("404", "NoSuchBucket"):
+                # 버킷이 없으면 생성
+                try:
+                    # us-east-1 리전은 CreateBucketConfiguration 불필요
+                    if self.settings.s3_region == "us-east-1":
+                        self.client.create_bucket(Bucket=self.bucket)
+                    else:
+                        self.client.create_bucket(
+                            Bucket=self.bucket,
+                            CreateBucketConfiguration={
+                                "LocationConstraint": self.settings.s3_region
+                            },
+                        )
+
+                    logger.info(
+                        "S3 bucket created",
+                        extra={
+                            "bucket": self.bucket,
+                            "region": self.settings.s3_region,
+                        },
+                    )
+                except ClientError as create_error:
+                    # 이미 생성된 경우는 무시
+                    if create_error.response.get("Error", {}).get("Code") in (
+                        "BucketAlreadyOwnedByYou",
+                        "BucketAlreadyExists",
+                    ):
+                        logger.info(
+                            "S3 bucket already exists",
+                            extra={"bucket": self.bucket},
+                        )
+                    else:
+                        logger.error(
+                            "Failed to create S3 bucket",
+                            extra={
+                                "bucket": self.bucket,
+                                "error": str(create_error),
+                            },
+                        )
+                        raise
+            else:
+                logger.error(
+                    "Failed to check S3 bucket",
+                    extra={
+                        "bucket": self.bucket,
+                        "error": str(e),
+                    },
+                )
+                raise
+
     def calculate_file_hash(self, file_content: bytes) -> str:
         """파일 해시 계산 (SHA-256)
 
