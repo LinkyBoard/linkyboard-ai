@@ -148,7 +148,6 @@ class SummarizationService:
         self,
         extracted_text: str,
         summary_prompt: str = prompts.WEBPAGE_SUMMARY_PROMPT,
-        max_summary_tokens: int = 400,
         prompt_kwargs: Optional[dict] = None,
     ) -> SummaryPipelineResult:
         """LLM 파이프라인 실행 (요약 + 태그 + 카테고리)
@@ -156,7 +155,6 @@ class SummarizationService:
         Args:
             extracted_text: 추출된 텍스트
             summary_prompt: 요약 프롬프트 템플릿
-            max_summary_tokens: 요약 최대 토큰 수
             prompt_kwargs: 프롬프트 포맷 인자
 
         Returns:
@@ -174,7 +172,6 @@ class SummarizationService:
                 ],
                 session=self.session,
                 temperature=0.3,
-                max_tokens=max_summary_tokens,
             )
 
             tag_result = await call_with_fallback(
@@ -189,7 +186,6 @@ class SummarizationService:
                 ],
                 session=self.session,
                 temperature=0.2,
-                max_tokens=200,
             )
 
             # 카테고리 후보 목록 조회
@@ -208,7 +204,6 @@ class SummarizationService:
                 ],
                 session=self.session,
                 temperature=0.2,
-                max_tokens=150,
             )
 
             return SummaryPipelineResult(
@@ -645,7 +640,6 @@ class SummarizationService:
         pipeline_result = await self._run_llm_pipeline(
             extracted_text,
             summary_prompt=prompts.PDF_SUMMARY_PROMPT,
-            max_summary_tokens=500,
         )
         (
             summary_data,
