@@ -55,9 +55,9 @@ class ContentService:
             - Phase 4: content_embedding_metadatas로 임베딩 복사
             - Phase 4: 태그/카테고리 사용 통계 업데이트
         """
-        # URL로 중복 탐지
-        existing = await self.repository.get_by_url(
-            str(data.url), data.user_id
+        # content_id로 기존 레코드 확인 (Spring Boot와 ID 동기화)
+        existing = await self.repository.get_by_id(
+            data.content_id, include_deleted=False
         )
 
         if existing:
@@ -70,6 +70,7 @@ class ContentService:
             existing.memo = data.memo
             existing.tags = data.tags
             existing.category = data.category
+            existing.source_url = str(data.url)
             existing.summary_status = SummaryStatus.PENDING
             existing.embedding_status = EmbeddingStatus.PENDING
 
@@ -120,9 +121,9 @@ class ContentService:
             - Phase 4: content_embedding_metadatas로 임베딩 복사
             - Phase 4: 태그/카테고리 사용 통계 업데이트
         """
-        # URL로 중복 탐지
-        existing = await self.repository.get_by_url(
-            str(data.url), data.user_id
+        # content_id로 기존 레코드 확인 (Spring Boot와 ID 동기화)
+        existing = await self.repository.get_by_id(
+            data.content_id, include_deleted=False
         )
 
         if existing:
@@ -135,6 +136,7 @@ class ContentService:
             existing.memo = data.memo
             existing.tags = data.tags
             existing.category = data.category
+            existing.source_url = str(data.url)
             existing.summary_status = SummaryStatus.PENDING
             existing.embedding_status = EmbeddingStatus.PENDING
 
@@ -197,13 +199,13 @@ class ContentService:
         # 파일 크기 검증
         self.s3_client.ensure_valid_file_size(len(file_content))
 
-        # file_hash로 중복 탐지 (S3 업로드 전)
-        existing = await self.repository.get_by_file_hash(
-            file_hash, data.user_id
+        # content_id로 기존 레코드 확인 (Spring Boot와 ID 동기화)
+        existing = await self.repository.get_by_id(
+            data.content_id, include_deleted=False
         )
 
         if existing:
-            # 메타데이터만 업데이트 (재업로드 안 함)
+            # 업데이트
             existing.title = data.title
             existing.summary = data.summary
             existing.memo = data.memo
@@ -211,6 +213,20 @@ class ContentService:
             existing.category = data.category
             existing.summary_status = SummaryStatus.PENDING
             existing.embedding_status = EmbeddingStatus.PENDING
+
+            # file_hash가 변경된 경우 S3 재업로드
+            if existing.file_hash != file_hash:
+                object_key = self.s3_client.upload_pdf(file_content, file_hash)
+                existing.file_hash = file_hash
+                logger.info(
+                    "PDF re-uploaded to S3",
+                    extra={
+                        "request_id": get_request_id(),
+                        "file_hash": file_hash,
+                        "object_key": object_key,
+                        "size": len(file_content),
+                    },
+                )
 
             content = await self.repository.update(existing)
             action = "updated"

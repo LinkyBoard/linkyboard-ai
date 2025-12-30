@@ -45,6 +45,15 @@ async def lifespan(app: FastAPI):
             "⚠️  LangFuse observability disabled (continuing without tracing)"
         )
 
+    # S3 클라이언트 초기화 (버킷 자동 생성)
+    try:
+        from app.core.storage import get_s3_client
+
+        get_s3_client()
+        logger.info("✅ S3 storage initialized")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize S3 storage: {e}")
+
     yield
     # Shutdown
     logger.info(f"👋 Shutting down {settings.app_name}...")
